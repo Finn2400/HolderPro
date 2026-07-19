@@ -181,7 +181,7 @@ jobs:
           path: ${{ github.workspace }}/.native-cache
           key: release-prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool libgl1-mesa-dev m4 ninja-build texinfo zstd
+        run: sudo apt-get update && sudo apt-get install -y autoconf automake libdbus-1-dev libgl1-mesa-dev libtool m4 ninja-build texinfo zstd
       - if: runner.os == 'macOS'
         run: |
           brew install autoconf automake libtool m4 ninja texinfo

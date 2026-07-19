@@ -38,6 +38,10 @@ All notable changes to HolderPro are documented here. The format follows
   reviewed source hashes remain identical on Windows, macOS, and Linux.
 - The Prusa dependency driver now runs one top-level ExternalProject at a time;
   each project retains its own parallel build without nested oversubscription.
+- Linux native builders install the upstream configure-time DBus metadata
+  explicitly; the headless engine neither links nor ships DBus.
+- The MSVC adapter target now receives PrusaSlicer's Windows math and Boost
+  header definitions explicitly instead of relying on upstream directory scope.
 
 ### Removed
 

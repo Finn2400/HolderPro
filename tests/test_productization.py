@@ -446,8 +446,24 @@ def test_native_prefetch_sources_match_audited_manifest() -> None:
     assert workflow.count('"scripts/prefetch-native-dependencies.cmake"') == 2
     assert workflow.count('"packaging/prusaslicer-native-dependency-sources.json"') == 2
 
+    for workflow_name in ("native.yml", "release-build.yml"):
+        workflow_text = (PROJECT / ".github/workflows" / workflow_name).read_text(
+            encoding="utf-8"
+        )
+        assert "libdbus-1-dev" in workflow_text
+        assert "libgl1-mesa-dev" in workflow_text
+
     for helper_name in ("build-native.sh", "build-native.ps1"):
         build_helper = (PROJECT / "scripts" / helper_name).read_text(encoding="utf-8")
         assert "core.autocrlf false" in build_helper
         assert "core.eol lf" in build_helper
         assert "--target deps --parallel 1" in build_helper
+
+    native_cmake = (PROJECT / "native/CMakeLists.txt").read_text(encoding="utf-8")
+    for definition in (
+        "_USE_MATH_DEFINES",
+        "BOOST_ALL_NO_LIB",
+        "BOOST_USE_WINAPI_VERSION=0x601",
+        "BOOST_SYSTEM_USE_UTF8",
+    ):
+        assert definition in native_cmake

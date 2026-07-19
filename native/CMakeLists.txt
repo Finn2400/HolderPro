@@ -157,6 +157,17 @@ if(WIN32)
 endif()
 
 if(MSVC)
+    # PrusaSlicer's own Windows directory scope defines these for its targets,
+    # but HolderPro's adapter target lives in the parent project and therefore
+    # does not inherit them. Keep the adapter's view of Prusa/Boost headers
+    # identical without modifying the pinned upstream source.
+    target_compile_definitions(holderpro-organic-engine PRIVATE
+        _USE_MATH_DEFINES
+        _CRT_SECURE_NO_WARNINGS
+        _SCL_SECURE_NO_WARNINGS
+        BOOST_ALL_NO_LIB
+        BOOST_USE_WINAPI_VERSION=0x601
+        BOOST_SYSTEM_USE_UTF8)
     target_link_options(holderpro-organic-engine PRIVATE
         "/MANIFEST:EMBED"
         "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/windows/holderpro-organic-engine.manifest")

@@ -32,6 +32,11 @@ A native build requires:
   `b028299c770b8380ee81c921a2867d522f288123`; and
 - a PrusaSlicer dependency prefix built for the same target.
 
+Ubuntu/Linux builders also need the platform OpenGL and DBus development
+metadata (`libgl1-mesa-dev` and `libdbus-1-dev` on Ubuntu 22.04). DBus is a
+configure-time prerequisite in upstream PrusaSlicer; the headless HolderPro
+engine does not link or ship it.
+
 Setup helpers verify prerequisites and never install a package manager or alter
 a supplied checkout. Downloading the PrusaSlicer checkout occurs only when the
 explicit `--download-source` / `-DownloadSource` option is passed. Dependency
