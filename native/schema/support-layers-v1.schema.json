@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holderpro.local/schema/organic-support-layers-v1.schema.json",
+  "title": "HolderPro exact Organic support layers",
+  "type": "object",
+  "required": ["schema", "version", "engine", "units", "input", "layers", "summary"],
+  "properties": {
+    "schema": { "const": "holderpro.organic-support-layers/v1" },
+    "version": { "const": 1 },
+    "engine": {
+      "type": "object",
+      "required": ["name", "version", "commit"],
+      "properties": {
+        "name": { "const": "PrusaSlicer Organic" },
+        "version": { "const": "2.9.6" },
+        "commit": { "const": "b028299c770b8380ee81c921a2867d522f288123" }
+      },
+      "additionalProperties": false
+    },
+    "units": { "const": "mm" },
+    "input": { "type": "string" },
+    "layers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/layer" }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["layer_count", "nonempty_layer_count", "polygon_count", "point_count"],
+      "properties": {
+        "layer_count": { "type": "integer", "minimum": 0 },
+        "nonempty_layer_count": { "type": "integer", "minimum": 0 },
+        "polygon_count": { "type": "integer", "minimum": 0 },
+        "point_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "items": false
+    },
+    "ring": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/point" }
+    },
+    "polygon": {
+      "type": "object",
+      "required": ["contour", "holes"],
+      "properties": {
+        "contour": { "$ref": "#/$defs/ring" },
+        "holes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ring" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "layer": {
+      "type": "object",
+      "required": ["print_z", "height", "bottom_z", "polygons"],
+      "properties": {
+        "print_z": { "type": "number" },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "bottom_z": { "type": "number" },
+        "polygons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/polygon" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

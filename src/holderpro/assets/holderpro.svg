@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Provisional alpha artwork; not a trademark-cleared final logo. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HolderPro">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#163644"/>
+      <stop offset="1" stop-color="#101b27"/>
+    </linearGradient>
+    <linearGradient id="tree" x1="0" y1="1" x2="0.72" y2="0">
+      <stop offset="0" stop-color="#2ec7d6"/>
+      <stop offset="1" stop-color="#70d99a"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#background)"/>
+  <path d="M101 412c0-28 34-45 78-52 31-5 47-19 55-42 9-27 10-64 10-103h30c0 42 2 78 12 102 9 22 27 36 57 42 43 8 68 25 68 53H101Z" fill="url(#tree)"/>
+  <path d="M259 247c-9-43-42-66-88-84M260 247c11-49 45-76 92-94M253 276c-37-17-72-16-106 3M267 276c36-19 70-17 102 7" fill="none" stroke="url(#tree)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="165" cy="160" r="31" fill="#70d99a"/>
+  <circle cx="354" cy="150" r="31" fill="#70d99a"/>
+  <circle cx="139" cy="285" r="25" fill="#2ec7d6"/>
+  <circle cx="379" cy="288" r="25" fill="#2ec7d6"/>
+  <path d="M94 95h324v38c0 27-22 49-49 49H143c-27 0-49-22-49-49V95Z" fill="#edf1f4"/>
+  <path d="M125 105h262" stroke="#b8c7d1" stroke-width="8" stroke-linecap="round"/>
+</svg>

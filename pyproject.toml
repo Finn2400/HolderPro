@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "holderpro"
+version = "0.1.0a1"
+description = "Design printable stands with PrusaSlicer's Organic-support engine"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+license = "AGPL-3.0-or-later"
+license-files = [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "upstream/prusaslicer-2.9.6-organic/LICENSE",
+]
+authors = [{ name = "HolderPro contributors" }]
+keywords = ["3d-printing", "organic-supports", "stl", "prusaslicer"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Environment :: MacOS X",
+  "Environment :: Win32 (MS Windows)",
+  "Environment :: X11 Applications :: Qt",
+  "Intended Audience :: Manufacturing",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows :: Windows 10",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+dependencies = [
+  "numpy>=1.26,<3",
+  "trimesh>=4.6,<5",
+  "manifold3d>=3.3,<4",
+  "shapely>=2.1,<3",
+]
+
+[project.optional-dependencies]
+gui = [
+  "PySide6-Essentials>=6.7,<7",
+  "vtk>=9.3,<10",
+]
+dev = [
+  "build>=1.2,<2",
+  "mypy>=1.11,<2",
+  "pytest>=8,<10",
+  "ruff>=0.8,<1",
+  "wheel>=0.45,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/Finn2400/HolderPro"
+Documentation = "https://github.com/Finn2400/HolderPro#readme"
+Issues = "https://github.com/Finn2400/HolderPro/issues"
+Source = "https://github.com/Finn2400/HolderPro"
+
+[project.scripts]
+holderpro = "holderpro.cli:main"
+holderpro-gui = "holderpro.ui:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["holderpro*"]
+
+[tool.setuptools.package-data]
+holderpro = [
+  "_native/holderpro-organic-engine*",
+  "_native/*/holderpro-organic-engine*",
+  "_native/*.dll",
+  "_native/*/*.dll",
+  "assets/*.svg",
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.py[cod]"]
+"holderpro._native" = ["__pycache__/*", "*.py[cod]"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/holderpro"]
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_configs = true
+check_untyped_defs = true

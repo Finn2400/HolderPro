@@ -1,0 +1,13 @@
+HOLDERPRO_SUPPORT_PAINT_V1
+faces FACE_COUNT
+E ENFORCER_FACE_INDEX
+B BLOCKER_FACE_INDEX
+
+Face indices refer to the triangle order in the posed mesh passed to the native
+adapter. HolderPro uses a minimal 3MF container for painted jobs because its
+explicit triangle order survives import without STL repair removing or
+reordering facets. Records are optional, zero-based, unique, and may appear in
+either state. `E` maps to PrusaSlicer's TriangleStateType::ENFORCER and `B` maps
+to TriangleStateType::BLOCKER. The declared face count must match the loaded
+mesh, so a stale or reordered painting fails closed instead of reaching another
+face.

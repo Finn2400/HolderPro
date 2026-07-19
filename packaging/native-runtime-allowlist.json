@@ -1,0 +1,35 @@
+{
+  "schema": "holderpro.native-runtime-allowlist/v1",
+  "darwin": [
+    "/System/Library/",
+    "/usr/lib/"
+  ],
+  "linux": [
+    "linux-vdso.so.",
+    "ld-linux-x86-64.so.",
+    "libc.so.",
+    "libdl.so.",
+    "libgcc_s.so.",
+    "libm.so.",
+    "libpthread.so.",
+    "librt.so.",
+    "libstdc++.so."
+  ],
+  "windows": [
+    "ADVAPI32.dll",
+    "bcrypt.dll",
+    "CRYPT32.dll",
+    "GDI32.dll",
+    "KERNEL32.dll",
+    "MSVCP140.dll",
+    "OLE32.dll",
+    "OLEAUT32.dll",
+    "SHELL32.dll",
+    "USER32.dll",
+    "VCRUNTIME140.dll",
+    "VCRUNTIME140_1.dll",
+    "WS2_32.dll",
+    "api-ms-win-",
+    "ucrtbase.dll"
+  ]
+}

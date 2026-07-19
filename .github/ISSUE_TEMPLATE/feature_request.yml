@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a focused improvement to the exact Organic-support product
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What stand-design workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Desired result
+      description: Describe the behavior, not a replacement support algorithm.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Printability and compatibility
+      description: Note effects on paint masks, pose registration, connectivity, validation, schemas, or dependencies.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This request is for HolderPro's exact Organic-support tool, not the retired approximation.
+          required: true

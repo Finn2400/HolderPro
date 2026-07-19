@@ -1,0 +1,729 @@
+name: Build release draft
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  PRUSA_COMMIT: b028299c770b8380ee81c921a2867d522f288123
+  PIP_CONSTRAINT: ${{ github.workspace }}/packaging/release-constraints.txt
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    environment: release
+    outputs:
+      pep440: ${{ steps.version.outputs.pep440 }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      display: ${{ steps.version.outputs.display }}
+      build_commit: ${{ steps.source_commit.outputs.build_commit }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+      - id: version
+        run: python packaging/scripts/release_version.py "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
+      - name: Match tag, Python package, and native product versions
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.pep440 }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          package_version = project["project"]["version"]
+          version_source = Path("src/holderpro/version.py").read_text(encoding="utf-8")
+          match = re.search(r'^FALLBACK_VERSION\s*=\s*"([^"]+)"$', version_source, re.MULTILINE)
+          if match is None:
+              raise SystemExit("src/holderpro/version.py has no FALLBACK_VERSION")
+          expected = os.environ["EXPECTED_VERSION"]
+          if package_version != expected or match.group(1) != expected:
+              raise SystemExit(
+                  "release version mismatch: "
+                  f"tag={expected}, pyproject={package_version}, fallback={match.group(1)}"
+              )
+          PY
+      - name: Verify annotated tag and source commit
+        id: source_commit
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main
+          echo "build_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require recorded legal release review
+        env:
+          LICENSE_REVIEW_APPROVED: ${{ vars.HOLDERPRO_LICENSE_REVIEW_APPROVED }}
+          TRADEMARK_REVIEW_APPROVED: ${{ vars.HOLDERPRO_TRADEMARK_REVIEW_APPROVED }}
+        run: |
+          test "$LICENSE_REVIEW_APPROVED" = true || { echo "Independent binary license review is not approved" >&2; exit 1; }
+          if [ "${{ steps.version.outputs.prerelease }}" = false ]; then
+            test "$TRADEMARK_REVIEW_APPROVED" = true || { echo "Stable branding requires a professional trademark knockout review" >&2; exit 1; }
+          fi
+      - run: python packaging/scripts/validate_schema.py
+      - run: python packaging/scripts/check_licenses.py
+      - run: python packaging/scripts/verify_source_manifest.py
+
+  source:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.build_commit }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11.9"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Fetch exact complete PrusaSlicer source
+        run: |
+          git init "$RUNNER_TEMP/PrusaSlicer"
+          git -C "$RUNNER_TEMP/PrusaSlicer" remote add origin https://github.com/prusa3d/PrusaSlicer.git
+          git -C "$RUNNER_TEMP/PrusaSlicer" fetch --depth 1 origin "$PRUSA_COMMIT"
+          git -C "$RUNNER_TEMP/PrusaSlicer" checkout --detach FETCH_HEAD
+          test -z "$(git -C "$RUNNER_TEMP/PrusaSlicer" status --porcelain --untracked-files=all)"
+      - run: python -m pip install --upgrade pip
+      - name: Install the exact source-manifest dependency closure
+        run: |
+          python -m pip install \
+            "numpy>=1.26,<3" "trimesh>=4.6,<5" "manifold3d>=3.3,<4" \
+            "shapely>=2.1,<3" "PySide6-Essentials>=6.7,<7" "vtk>=9.3,<10" \
+            build pyinstaller pillow setuptools wheel
+      - name: Resolve dependency source manifest
+        run: |
+          python packaging/scripts/build_dependency_manifest.py \
+            --prusa-source "$RUNNER_TEMP/PrusaSlicer" \
+            --holderpro-build-id "${{ needs.preflight.outputs.build_commit }}" \
+            --output "$RUNNER_TEMP/dependency-sources.json"
+      - name: Build and independently verify corresponding source
+        run: |
+          python packaging/scripts/build_corresponding_source.py \
+            --repository . \
+            --prusa-source "$RUNNER_TEMP/PrusaSlicer" \
+            --dependency-manifest "$RUNNER_TEMP/dependency-sources.json" \
+            --version "${{ needs.preflight.outputs.display }}" \
+            --output "$RUNNER_TEMP/holderpro-${{ needs.preflight.outputs.display }}-corresponding-source.tar.zst"
+          python packaging/scripts/verify_corresponding_source.py \
+            "$RUNNER_TEMP/holderpro-${{ needs.preflight.outputs.display }}-corresponding-source.tar.zst"
+          mkdir release-assets
+          cp "$RUNNER_TEMP/dependency-sources.json" release-assets/
+          cp "$RUNNER_TEMP/holderpro-${{ needs.preflight.outputs.display }}-corresponding-source.tar.zst" release-assets/
+      - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-source
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 30
+
+  platform:
+    needs: preflight
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+            wheel: macosx_13_0_arm64
+          - target: macos-x86_64
+            runner: macos-15-intel
+            wheel: macosx_13_0_x86_64
+          - target: windows-x86_64
+            runner: windows-2022
+            wheel: win_amd64
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+            wheel: manylinux_2_35_x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      HOLDERPRO_NATIVE_CACHE: ${{ github.workspace }}/.native-cache
+      HOLDERPRO_VERSION: ${{ needs.preflight.outputs.pep440 }}
+      HOLDERPRO_BUILD_ID: ${{ needs.preflight.outputs.build_commit }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.build_commit }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11.9"
+          cache: pip
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ github.workspace }}/.native-cache
+          key: release-prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'native/CMakePresets.json') }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool m4 ninja-build texinfo zstd
+      - if: runner.os == 'macOS'
+        run: |
+          brew install autoconf automake libtool m4 ninja texinfo
+          echo "$(brew --prefix texinfo)/bin" >> "$GITHUB_PATH"
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - name: Build pinned native engine (Unix)
+        if: runner.os != 'Windows'
+        run: ./scripts/build-native.sh --preset "${{ matrix.target }}" --download-source --version "$HOLDERPRO_VERSION" --build-id "$HOLDERPRO_BUILD_ID"
+      - name: Build pinned native engine (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-native.ps1 -Preset "${{ matrix.target }}" -DownloadSource -Version $env:HOLDERPRO_VERSION -BuildId $env:HOLDERPRO_BUILD_ID
+      - name: Install native runtime
+        shell: bash
+        run: |
+          extra=()
+          if [ "$RUNNER_OS" != Windows ]; then extra+=(--strip); fi
+          cmake --install "native/build/${{ matrix.target }}" --prefix "native/stage/${{ matrix.target }}" "${extra[@]}"
+      - name: Sign native runtime on macOS
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          HOLDERPRO_APPLE_SIGNING_IDENTITY: ${{ vars.HOLDERPRO_APPLE_SIGNING_IDENTITY }}
+        run: |
+          test -n "$APPLE_CERTIFICATE_P12" && test -n "$APPLE_CERTIFICATE_PASSWORD" && test -n "$HOLDERPRO_APPLE_SIGNING_IDENTITY" || { echo "Apple signing configuration is missing" >&2; exit 1; }
+          KEYCHAIN="$RUNNER_TEMP/holderpro-signing.keychain-db"
+          security create-keychain -p holderpro "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p holderpro "$KEYCHAIN"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k holderpro "$KEYCHAIN"
+          codesign --force --options runtime --timestamp --sign "$HOLDERPRO_APPLE_SIGNING_IDENTITY" "native/stage/${{ matrix.target }}/bin/holderpro-organic-engine"
+          codesign --verify --strict --verbose=2 "native/stage/${{ matrix.target }}/bin/holderpro-organic-engine"
+      - name: Require Azure Artifact Signing configuration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          CLIENT: ${{ secrets.AZURE_CLIENT_ID }}
+          TENANT: ${{ secrets.AZURE_TENANT_ID }}
+          SUBSCRIPTION: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          if (-not $env:ENDPOINT -or -not $env:ACCOUNT -or -not $env:PROFILE -or -not $env:CLIENT -or -not $env:TENANT -or -not $env:SUBSCRIPTION) { throw "Azure OIDC / Artifact Signing configuration is missing" }
+      - name: Authenticate to Azure with OIDC
+        if: runner.os == 'Windows'
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign Windows native runtime
+        if: runner.os == 'Windows'
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: native/stage/${{ matrix.target }}/bin
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify Windows native Authenticode
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem native/stage/${{ matrix.target }}/bin -File | Where-Object { $_.Extension -in '.exe','.dll' } | ForEach-Object {
+            $signature = Get-AuthenticodeSignature $_.FullName
+            if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($_.FullName) ($($signature.Status))" }
+          }
+      - name: Audit installed native runtime
+        shell: bash
+        run: |
+          python -m pip install pefile
+          python packaging/scripts/audit_native_dependencies.py \
+            "native/stage/${{ matrix.target }}/bin/holderpro-organic-engine${{ runner.os == 'Windows' && '.exe' || '' }}" \
+            --companion-dir "native/stage/${{ matrix.target }}/bin"
+      - name: Verify native identity and provenance
+        shell: bash
+        run: |
+          mkdir -p "release-assets/${{ matrix.target }}"
+          python packaging/scripts/verify_native_stage.py \
+            --native-bin "native/stage/${{ matrix.target }}/bin" \
+            --expected-version "$HOLDERPRO_VERSION" \
+            --expected-target "${{ matrix.target }}" \
+            --expected-build-id "$HOLDERPRO_BUILD_ID" \
+            --manifest-out "release-assets/${{ matrix.target }}/HolderPro-${{ matrix.target }}-native-manifest.json"
+      - name: Real-engine regression suite
+        shell: bash
+        env:
+          HOLDERPRO_REAL_ENGINE: ${{ github.workspace }}/native/stage/${{ matrix.target }}/bin/holderpro-organic-engine${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: |
+          python -m pip install -e ".[dev]"
+          python -c "from pathlib import Path; assert Path('tests/test_real_engine.py').is_file()"
+          pytest tests/test_real_engine.py
+      - name: Build and verify platform wheel
+        shell: bash
+        run: |
+          python -m pip install build setuptools wheel
+          mkdir -p "release-assets/${{ matrix.target }}"
+          python packaging/scripts/build_platform_wheel.py \
+            --repository . \
+            --native-bin "native/stage/${{ matrix.target }}/bin" \
+            --version "$HOLDERPRO_VERSION" \
+            --build-id "$HOLDERPRO_BUILD_ID" \
+            --target "${{ matrix.target }}" \
+            --platform-tag "${{ matrix.wheel }}" \
+            --output "release-assets/${{ matrix.target }}"
+          python packaging/scripts/verify_platform_wheel.py \
+            "release-assets/${{ matrix.target }}"/*.whl \
+            --platform-tag "${{ matrix.wheel }}" \
+            --version "$HOLDERPRO_VERSION" \
+            --build-id "$HOLDERPRO_BUILD_ID" \
+            --target "${{ matrix.target }}"
+          test -z "$(find release-assets -type f \( -name '*.tar.gz' -o -name '*.zip' \) -print -quit)"
+      - name: Clean-install wheel smoke test
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-test"
+          if [ "$RUNNER_OS" = Windows ]; then
+            wheel_python="$RUNNER_TEMP/wheel-test/Scripts/python.exe"
+            wheel_cli="$RUNNER_TEMP/wheel-test/Scripts/holderpro.exe"
+          else
+            wheel_python="$RUNNER_TEMP/wheel-test/bin/python"
+            wheel_cli="$RUNNER_TEMP/wheel-test/bin/holderpro"
+          fi
+          "$wheel_python" -m pip install "release-assets/${{ matrix.target }}"/*.whl
+          "$wheel_cli" version --json
+          REFERENCE="$RUNNER_TEMP/clean wheel Ω reference.stl" \
+          SUPPORTS="$RUNNER_TEMP/clean wheel Ω supports.stl" \
+          "$wheel_python" - <<'PY'
+          import os
+          from importlib.util import find_spec
+          from pathlib import Path
+
+          assert find_spec("networkx") is None
+          assert find_spec("lxml") is None
+          import trimesh
+
+          trimesh.creation.box(extents=(10.0, 8.0, 2.0)).export(
+              Path(os.environ["REFERENCE"])
+          )
+          PY
+          "$wheel_cli" generate \
+            "$RUNNER_TEMP/clean wheel Ω reference.stl" \
+            "$RUNNER_TEMP/clean wheel Ω supports.stl" \
+            --bottom-height 8 --base-thickness 3 --layer-height 0.4
+          SUPPORTS="$RUNNER_TEMP/clean wheel Ω supports.stl" \
+          "$wheel_python" - <<'PY'
+          import os
+          from pathlib import Path
+
+          import trimesh
+
+          support = trimesh.load_mesh(Path(os.environ["SUPPORTS"]), process=True)
+          assert support.is_watertight and support.is_volume and support.volume > 0
+          PY
+      - name: Install desktop build dependencies and collect notices
+        shell: bash
+        run: |
+          python -m pip install ".[gui]" "pyinstaller>=6,<7" pillow
+          python packaging/scripts/collect_python_licenses.py --output "$RUNNER_TEMP/THIRD_PARTY_LICENSES"
+          python packaging/scripts/verify_python_licenses.py "$RUNNER_TEMP/THIRD_PARTY_LICENSES"
+          python packaging/scripts/build_icons.py
+      - name: Build PyInstaller one-directory application
+        shell: bash
+        env:
+          HOLDERPRO_NATIVE_BIN: ${{ github.workspace }}/native/stage/${{ matrix.target }}/bin
+          HOLDERPRO_THIRD_PARTY_LICENSES: ${{ runner.temp }}/THIRD_PARTY_LICENSES
+        run: pyinstaller --clean --noconfirm packaging/pyinstaller/HolderPro.spec
+      - name: Bind desktop manifest to the packaged native runtime
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then bundle=dist/HolderPro.app; else bundle=dist/HolderPro; fi
+          python packaging/scripts/refresh_desktop_native_manifest.py "$bundle" \
+            --expected-version "$HOLDERPRO_VERSION" \
+            --expected-target "${{ matrix.target }}" \
+            --expected-build-id "$HOLDERPRO_BUILD_ID"
+      - name: Enforce desktop bundle contents and size
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            python packaging/scripts/verify_macos_bundle.py dist/HolderPro.app --version "$HOLDERPRO_VERSION"
+            python packaging/scripts/verify_desktop_bundle.py dist/HolderPro.app
+          else
+            python packaging/scripts/verify_desktop_bundle.py dist/HolderPro
+          fi
+      - name: Frozen generation, support-display, and OpenGL self-test
+        if: runner.os != 'macOS'
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then app=dist/HolderPro/HolderPro.exe; else app=dist/HolderPro/HolderPro; fi
+          "$app" --holderpro-package-self-test
+          "$app" --holderpro-opengl-probe
+      - name: Frozen generation, support-display, and OpenGL self-test on macOS
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          dist/HolderPro.app/Contents/MacOS/HolderPro --holderpro-package-self-test
+          dist/HolderPro.app/Contents/MacOS/HolderPro --holderpro-opengl-probe
+      - name: Package and notarize macOS DMG
+        if: runner.os == 'macOS'
+        env:
+          HOLDERPRO_APPLE_SIGNING_IDENTITY: ${{ vars.HOLDERPRO_APPLE_SIGNING_IDENTITY }}
+          HOLDERPRO_NOTARY_PROFILE: holderpro-notary
+          HOLDERPRO_TARGET: ${{ matrix.target }}
+          APPLE_NOTARY_ID: ${{ secrets.APPLE_NOTARY_ID }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+        run: |
+          test -n "$APPLE_NOTARY_ID" && test -n "$APPLE_NOTARY_TEAM_ID" && test -n "$APPLE_NOTARY_PASSWORD" || { echo "Apple notarization credentials are missing" >&2; exit 1; }
+          xcrun notarytool store-credentials "$HOLDERPRO_NOTARY_PROFILE" --apple-id "$APPLE_NOTARY_ID" --team-id "$APPLE_NOTARY_TEAM_ID" --password "$APPLE_NOTARY_PASSWORD"
+          packaging/macos/package_dmg.sh dist/HolderPro.app "release-assets/${{ matrix.target }}/HolderPro-${{ needs.preflight.outputs.display }}-${{ matrix.target }}.dmg" "${{ needs.preflight.outputs.display }}"
+      - name: Sign and package Windows application
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --version=6.4.3 --no-progress -y
+      - name: Sign Windows application files
+        if: runner.os == 'Windows'
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: dist/HolderPro
+          files-folder-filter: exe,dll,pyd
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify all Windows application signatures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist/HolderPro -Recurse -File | Where-Object { $_.Extension -in '.exe','.dll','.pyd' }
+          if (-not $files) { throw "No Windows executables were found to verify" }
+          $files | ForEach-Object {
+            $signature = Get-AuthenticodeSignature $_.FullName
+            if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($_.FullName) ($($signature.Status))" }
+          }
+      - name: Rebind and verify the signed Windows desktop runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python packaging/scripts/refresh_desktop_native_manifest.py dist/HolderPro --expected-version $env:HOLDERPRO_VERSION --expected-target "${{ matrix.target }}" --expected-build-id $env:HOLDERPRO_BUILD_ID
+          python packaging/scripts/verify_desktop_bundle.py dist/HolderPro
+      - name: Create Windows installer and portable ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: packaging/windows/package.ps1 -AppDirectory dist/HolderPro -OutputDirectory release-assets/${{ matrix.target }} -Version "${{ needs.preflight.outputs.display }}"
+      - name: Sign Windows installer
+        if: runner.os == 'Windows'
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: release-assets/${{ matrix.target }}
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify Windows installer Authenticode
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem release-assets/${{ matrix.target }} -Filter '*setup.exe' -File
+          if ($installers.Count -ne 1) { throw "Expected exactly one Windows installer" }
+          $signature = Get-AuthenticodeSignature $installers[0].FullName
+          if ($signature.Status -ne 'Valid') { throw "Invalid installer signature: $($signature.Status)" }
+      - name: Create Linux AppImage and portable tar.zst
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGETOOL_URL: ${{ vars.APPIMAGETOOL_URL }}
+          APPIMAGETOOL_SHA256: ${{ vars.APPIMAGETOOL_SHA256 }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          test -n "$APPIMAGETOOL_URL" && test -n "$APPIMAGETOOL_SHA256" || { echo "Pinned appimagetool URL and SHA-256 are required" >&2; exit 1; }
+          curl --fail --location "$APPIMAGETOOL_URL" --output "$RUNNER_TEMP/appimagetool"
+          echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          APPIMAGETOOL="$RUNNER_TEMP/appimagetool" packaging/linux/package.sh dist/HolderPro "release-assets/${{ matrix.target }}" "${{ needs.preflight.outputs.display }}"
+      - name: Smoke-test exact macOS DMG payload
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          dmg="release-assets/${{ matrix.target }}/HolderPro-${{ needs.preflight.outputs.display }}-${{ matrix.target }}.dmg"
+          mount="$RUNNER_TEMP/holderpro-dmg-mount"
+          mkdir "$mount"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount"' EXIT
+          "$mount/HolderPro.app/Contents/MacOS/HolderPro" --holderpro-package-self-test
+          "$mount/HolderPro.app/Contents/MacOS/HolderPro" --holderpro-opengl-probe
+          hdiutil detach "$mount"
+          trap - EXIT
+      - name: Smoke-test exact Windows installer and portable ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $assets = 'release-assets/${{ matrix.target }}'
+          $portable = Get-ChildItem $assets -Filter '*portable.zip' -File
+          $installer = Get-ChildItem $assets -Filter '*setup.exe' -File
+          if ($portable.Count -ne 1 -or $installer.Count -ne 1) { throw 'Expected one portable ZIP and one installer' }
+          $portableDir = Join-Path $env:RUNNER_TEMP 'holderpro-portable'
+          Expand-Archive $portable[0].FullName $portableDir
+          & (Join-Path $portableDir 'HolderPro.exe') --holderpro-package-self-test
+          if ($LASTEXITCODE -ne 0) { throw "Portable HolderPro generation self-test failed with exit code $LASTEXITCODE" }
+          & (Join-Path $portableDir 'HolderPro.exe') --holderpro-opengl-probe
+          if ($LASTEXITCODE -ne 0) { throw "Portable HolderPro failed with exit code $LASTEXITCODE" }
+          $installedDir = Join-Path $env:RUNNER_TEMP 'holderpro-installed'
+          $process = Start-Process -Wait -PassThru $installer[0].FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installedDir")
+          if ($process.ExitCode -ne 0) { throw "HolderPro installer failed with exit code $($process.ExitCode)" }
+          & (Join-Path $installedDir 'HolderPro.exe') --holderpro-package-self-test
+          if ($LASTEXITCODE -ne 0) { throw "Installed HolderPro generation self-test failed with exit code $LASTEXITCODE" }
+          & (Join-Path $installedDir 'HolderPro.exe') --holderpro-opengl-probe
+          if ($LASTEXITCODE -ne 0) { throw "Installed HolderPro failed with exit code $LASTEXITCODE" }
+      - name: Smoke-test exact Linux AppImage and portable archive
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          appimage="release-assets/${{ matrix.target }}/HolderPro-${{ needs.preflight.outputs.display }}-linux-x86_64.AppImage"
+          portable="release-assets/${{ matrix.target }}/HolderPro-${{ needs.preflight.outputs.display }}-linux-x86_64.tar.zst"
+          "$appimage" --holderpro-package-self-test
+          "$appimage" --holderpro-opengl-probe
+          mkdir "$RUNNER_TEMP/holderpro-portable"
+          zstd -q -d -c "$portable" | tar -xf - -C "$RUNNER_TEMP/holderpro-portable"
+          "$RUNNER_TEMP/holderpro-portable/HolderPro/HolderPro" --holderpro-package-self-test
+          "$RUNNER_TEMP/holderpro-portable/HolderPro/HolderPro" --holderpro-opengl-probe
+      - name: Generate final signed desktop-payload SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: ${{ runner.os == 'macOS' && 'dist/HolderPro.app' || 'dist/HolderPro' }}
+          format: cyclonedx-json
+          output-file: release-assets/${{ matrix.target }}/HolderPro-${{ matrix.target }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Record target-specific build environment
+        shell: bash
+        env:
+          APPIMAGETOOL_URL: ${{ vars.APPIMAGETOOL_URL }}
+          APPIMAGETOOL_SHA256: ${{ vars.APPIMAGETOOL_SHA256 }}
+        run: |
+          extra=()
+          if [ "${{ matrix.target }}" = linux-x86_64 ]; then
+            extra+=(--appimagetool-url "$APPIMAGETOOL_URL" --appimagetool-sha256 "$APPIMAGETOOL_SHA256" --appimagetool-path "$RUNNER_TEMP/appimagetool")
+          fi
+          python packaging/scripts/write_build_environment.py \
+            --target "${{ matrix.target }}" \
+            --version "$HOLDERPRO_VERSION" \
+            --build-id "$HOLDERPRO_BUILD_ID" \
+            --output "release-assets/${{ matrix.target }}/HolderPro-${{ matrix.target }}-build-environment.json" \
+            "${extra[@]}"
+      - name: Archive resolved third-party licenses
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            (cd "$RUNNER_TEMP" && 7z a -tzip "$GITHUB_WORKSPACE/release-assets/${{ matrix.target }}/THIRD_PARTY_LICENSES-${{ matrix.target }}.zip" THIRD_PARTY_LICENSES)
+          else
+            tar -C "$RUNNER_TEMP" -czf "release-assets/${{ matrix.target }}/THIRD_PARTY_LICENSES-${{ matrix.target }}.tar.gz" THIRD_PARTY_LICENSES
+          fi
+      - name: Digest-bind all final target assets to the build commit
+        shell: bash
+        run: |
+          python packaging/scripts/write_release_asset_manifest.py \
+            "release-assets/${{ matrix.target }}" \
+            --target "${{ matrix.target }}" \
+            --display-version "${{ needs.preflight.outputs.display }}" \
+            --pep440-version "$HOLDERPRO_VERSION" \
+            --build-id "$HOLDERPRO_BUILD_ID" \
+            --output "release-assets/${{ matrix.target }}/HolderPro-${{ matrix.target }}-asset-manifest.json"
+      - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: release-assets/${{ matrix.target }}/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.target }}
+          path: release-assets/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30
+
+  package-test:
+    name: Clean package test (${{ matrix.target }})
+    needs: [preflight, platform]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x86_64
+            runner: macos-15-intel
+          - target: windows-x86_64
+            runner: windows-2022
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Intentionally no checkout, setup-python, PrusaSlicer, CMake, or compiler
+      # setup: this job sees only the exact downloadable package artifact.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-${{ matrix.target }}
+          path: package
+      - name: Test macOS DMG with a scrubbed executable search path
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          dmg="package/HolderPro-${{ needs.preflight.outputs.display }}-${{ matrix.target }}.dmg"
+          mount="$RUNNER_TEMP/holderpro-clean-dmg"
+          empty="$RUNNER_TEMP/holderpro-empty-path"
+          long_temp="$RUNNER_TEMP/holderpro-long-path-$(printf 'segment%.0s' {1..20})"
+          mkdir "$mount" "$empty" "$long_temp"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount"' EXIT
+          env PATH="$empty" TMPDIR="$long_temp" "$mount/HolderPro.app/Contents/MacOS/HolderPro" --holderpro-package-self-test
+          env PATH="$empty" TMPDIR="$long_temp" "$mount/HolderPro.app/Contents/MacOS/HolderPro" --holderpro-opengl-probe
+      - name: Test Windows portable and installer with a scrubbed executable search path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $portable = Get-ChildItem package -Filter '*portable.zip' -File
+          $installer = Get-ChildItem package -Filter '*setup.exe' -File
+          if ($portable.Count -ne 1 -or $installer.Count -ne 1) { throw 'Exact Windows packages are missing' }
+          $longRoot = Join-Path $env:RUNNER_TEMP ('holderpro-long-' + (('segment' * 20) -join ''))
+          $portableDir = Join-Path $longRoot 'portable'
+          $installedDir = Join-Path $longRoot 'installed'
+          New-Item -ItemType Directory -Force -Path $longRoot | Out-Null
+          Expand-Archive $portable[0].FullName $portableDir
+          $process = Start-Process -Wait -PassThru $installer[0].FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installedDir")
+          if ($process.ExitCode -ne 0) { throw "HolderPro installer failed: $($process.ExitCode)" }
+          $env:TEMP = Join-Path $longRoot 'temporary'
+          $env:TMP = $env:TEMP
+          New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+          & icacls.exe $portableDir /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)(RX)" | Out-Null
+          & icacls.exe $installedDir /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)(RX)" | Out-Null
+          $env:Path = Join-Path $env:RUNNER_TEMP 'holderpro-empty-path'
+          New-Item -ItemType Directory -Force -Path $env:Path | Out-Null
+          foreach ($app in @((Join-Path $portableDir 'HolderPro.exe'), (Join-Path $installedDir 'HolderPro.exe'))) {
+            & $app --holderpro-package-self-test
+            if ($LASTEXITCODE -ne 0) { throw "Packaged generation self-test failed: $app" }
+            & $app --holderpro-opengl-probe
+            if ($LASTEXITCODE -ne 0) { throw "Packaged OpenGL probe failed: $app" }
+          }
+      - name: Test Linux AppImage and portable archive with a scrubbed executable search path
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          appimage="package/HolderPro-${{ needs.preflight.outputs.display }}-linux-x86_64.AppImage"
+          portable="package/HolderPro-${{ needs.preflight.outputs.display }}-linux-x86_64.tar.zst"
+          extracted="$RUNNER_TEMP/holderpro-clean-portable"
+          safe_path="$RUNNER_TEMP/holderpro-runtime-path"
+          long_temp="$RUNNER_TEMP/holderpro-long-path-$(printf 'segment%.0s' {1..20})"
+          mkdir "$extracted" "$safe_path" "$long_temp"
+          ln -s /usr/bin/dirname "$safe_path/dirname"
+          zstd -q -d -c "$portable" | tar -xf - -C "$extracted"
+          chmod +x "$appimage" "$extracted/HolderPro/HolderPro"
+          chmod -R a-w "$extracted/HolderPro"
+          PATH="$safe_path" TMPDIR="$long_temp" "$appimage" --holderpro-package-self-test
+          PATH="$safe_path" TMPDIR="$long_temp" "$appimage" --holderpro-opengl-probe
+          PATH="$safe_path" TMPDIR="$long_temp" "$extracted/HolderPro/HolderPro" --holderpro-package-self-test
+          PATH="$safe_path" TMPDIR="$long_temp" "$extracted/HolderPro/HolderPro" --holderpro-opengl-probe
+
+  draft:
+    needs: [preflight, source, platform, package-test]
+    runs-on: ubuntu-22.04
+    environment: release
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.build_commit }}
+      - run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Recheck tag identity before assembling the draft
+        run: |
+          git fetch --force origin "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "${{ needs.preflight.outputs.build_commit }}"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify exact closed artifact inventory
+        run: |
+          python packaging/scripts/verify_release_assets.py release-assets \
+            --display-version "${{ needs.preflight.outputs.display }}" \
+            --pep440-version "${{ needs.preflight.outputs.pep440 }}"
+      - name: Verify every payload is bound to the tag commit
+        run: |
+          python packaging/scripts/verify_release_provenance.py release-assets \
+            --display-version "${{ needs.preflight.outputs.display }}" \
+            --pep440-version "${{ needs.preflight.outputs.pep440 }}" \
+            --build-id "${{ needs.preflight.outputs.build_commit }}"
+      - name: Verify GitHub build provenance for every draft asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          workflow_identity="https://github.com/$GITHUB_WORKFLOW_REF"
+          find release-assets -maxdepth 1 -type f -print0 | while IFS= read -r -d '' asset; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
+              --cert-identity "$workflow_identity" --deny-self-hosted-runners
+          done
+      - run: python packaging/scripts/checksums.py release-assets
+      - run: python packaging/scripts/checksums.py release-assets --verify
+      - name: Verify checksummed artifact inventory
+        run: |
+          python packaging/scripts/verify_release_assets.py release-assets \
+            --display-version "${{ needs.preflight.outputs.display }}" \
+            --pep440-version "${{ needs.preflight.outputs.pep440 }}" \
+            --include-checksums
+      - name: Create draft release from exact artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ needs.preflight.outputs.prerelease }}" = true ]; then release_kind=prerelease; else release_kind=release; fi
+          source_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/holderpro-${{ needs.preflight.outputs.display }}-corresponding-source.tar.zst"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          HolderPro ${{ needs.preflight.outputs.display }} is a $release_kind of the exact Organic-support stand designer.
+
+          Every binary has checksums, a final desktop-payload SBOM, GitHub build provenance, platform signatures where applicable, and a [version-matched corresponding-source archive]($source_url). HolderPro is independent and is not affiliated with or endorsed by Prusa Research.
+          EOF
+          flags=(--draft --verify-tag --title "HolderPro ${{ needs.preflight.outputs.display }}" --notes-file "$RUNNER_TEMP/release-notes.md")
+          if [ "${{ needs.preflight.outputs.prerelease }}" = true ]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "${flags[@]}" release-assets/*

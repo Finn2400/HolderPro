@@ -1,0 +1,3 @@
+# Preserve the reviewed upstream snapshot byte-for-byte. Its historical files
+# intentionally retain upstream line endings and trailing whitespace.
+upstream/prusaslicer-2.9.6-organic/** -text whitespace=-trailing-space,-space-before-tab

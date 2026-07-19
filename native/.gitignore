@@ -1,0 +1,6 @@
+/.prusa-src/
+/build*/
+/deps-build/
+/dist/
+/.cache/
+*.tmp

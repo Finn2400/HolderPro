@@ -1,0 +1,33 @@
+{
+  "schema": "holderpro.binary-distribution-sources/v1",
+  "components": [
+    {
+      "name": "PySide6-Essentials",
+      "version": "6.11.1",
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.1-src/pyside-setup-everywhere-src-6.11.1.tar.xz",
+      "source_sha256": "6ffd9835bb0dd2c56f061d62f1616bb1707cfc0202b80e3165d6be087f3965e2",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    },
+    {
+      "name": "shiboken6",
+      "version": "6.11.1",
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.1-src/pyside-setup-everywhere-src-6.11.1.tar.xz",
+      "source_sha256": "6ffd9835bb0dd2c56f061d62f1616bb1707cfc0202b80e3165d6be087f3965e2",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    },
+    {
+      "name": "Qt",
+      "version": "6.11.1",
+      "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/single/qt-everywhere-src-6.11.1.tar.xz",
+      "source_sha256": "252acef8c5ae68074d91cadba2ee4a83465051bbb970dd26e8f0daa0f3904e03",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    },
+    {
+      "name": "vtk",
+      "version": "9.6.2",
+      "source_url": "https://github.com/Kitware/VTK/archive/refs/tags/v9.6.2.tar.gz",
+      "source_sha256": "de5c02499c550aa09052b2d5f3823a8cae54c72ce1b0014afcde2dabd8e390ea",
+      "license": "BSD-3-Clause"
+    }
+  ]
+}

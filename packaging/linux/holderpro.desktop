@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=HolderPro
+Comment=Design solid Organic support stands
+Exec=HolderPro %F
+Icon=holderpro
+Terminal=false
+Categories=Graphics;Engineering;
+MimeType=model/stl;model/3mf;

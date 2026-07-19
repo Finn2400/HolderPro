@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Finn2400/HolderPro/security/advisories/new
+    about: Report security issues privately.
+  - name: Support and questions
+    url: https://github.com/Finn2400/HolderPro/discussions
+    about: Ask workflow and print-design questions.

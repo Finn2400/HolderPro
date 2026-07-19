@@ -1,0 +1,29 @@
+{
+  "schema": "holderpro.pyinstaller-bundle-policy/v1",
+  "maximum_bytes": 943718400,
+  "forbidden_top_level_modules": [
+    "charset_normalizer",
+    "fast_simplification",
+    "lxml",
+    "mpl_toolkits",
+    "networkx",
+    "pandas",
+    "PIL",
+    "pyvista",
+    "pyvistaqt",
+    "qtpy",
+    "rtree",
+    "scipy",
+    "vtk",
+    "yaml"
+  ],
+  "required_path_fragments": [
+    "THIRD_PARTY_LICENSES/MANIFEST.json",
+    "holderpro/assets/holderpro.svg",
+    "holderpro/_native/MANIFEST.json",
+    "holderpro/_native/holderpro-organic-engine",
+    "holderpro/ui.pyc",
+    "vtkmodules",
+    "PySide6"
+  ]
+}

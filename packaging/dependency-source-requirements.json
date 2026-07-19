@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "holderpro.dependency-source-requirements/v1",
+  "components": [
+    {
+      "name": "PrusaSlicer",
+      "ecosystem": "git",
+      "requirement": "b028299c770b8380ee81c921a2867d522f288123",
+      "source_repository": "https://github.com/prusa3d/PrusaSlicer.git",
+      "license": "AGPL-3.0-or-later",
+      "relationship": "statically-linked"
+    },
+    {
+      "name": "CPython",
+      "ecosystem": "source-archive",
+      "requirement": "==3.11.9",
+      "source_repository": "https://github.com/python/cpython",
+      "source_url": "https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tar.xz",
+      "source_sha256": "9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87",
+      "license": "PSF-2.0",
+      "relationship": "runtime-interpreter"
+    },
+    {
+      "name": "numpy",
+      "ecosystem": "pypi",
+      "requirement": ">=1.26,<3",
+      "source_repository": "https://github.com/numpy/numpy",
+      "license": "BSD-3-Clause",
+      "relationship": "runtime"
+    },
+    {
+      "name": "trimesh",
+      "ecosystem": "pypi",
+      "requirement": ">=4.6,<5",
+      "source_repository": "https://github.com/mikedh/trimesh",
+      "license": "MIT",
+      "relationship": "runtime"
+    },
+    {
+      "name": "manifold3d",
+      "ecosystem": "pypi",
+      "requirement": ">=3.3,<4",
+      "source_repository": "https://github.com/elalish/manifold",
+      "license": "Apache-2.0",
+      "relationship": "runtime"
+    },
+    {
+      "name": "shapely",
+      "ecosystem": "pypi",
+      "requirement": ">=2.1,<3",
+      "source_repository": "https://github.com/shapely/shapely",
+      "license": "BSD-3-Clause",
+      "relationship": "runtime"
+    },
+    {
+      "name": "PySide6-Essentials",
+      "ecosystem": "pypi",
+      "requirement": ">=6.7,<7",
+      "source_repository": "https://code.qt.io/cgit/pyside/pyside-setup.git/",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "relationship": "optional-runtime-dynamic"
+    },
+    {
+      "name": "vtk",
+      "ecosystem": "pypi",
+      "requirement": ">=9.3,<10",
+      "source_repository": "https://gitlab.kitware.com/vtk/vtk",
+      "license": "BSD-3-Clause",
+      "relationship": "optional-runtime"
+    },
+    {
+      "name": "shiboken6",
+      "ecosystem": "pypi",
+      "requirement": "==6.11.1",
+      "source_repository": "https://code.qt.io/cgit/pyside/pyside-setup.git/",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "relationship": "optional-runtime-dynamic"
+    },
+    {
+      "name": "PyInstaller",
+      "ecosystem": "pypi",
+      "requirement": "==6.21.0",
+      "source_repository": "https://github.com/pyinstaller/pyinstaller",
+      "license": "GPL-2.0-or-later WITH Bootloader-exception",
+      "relationship": "desktop-build-and-bootloader"
+    },
+    {
+      "name": "pillow",
+      "ecosystem": "pypi",
+      "requirement": "==12.3.0",
+      "source_repository": "https://github.com/python-pillow/Pillow",
+      "license": "HPND",
+      "relationship": "desktop-build"
+    },
+    {
+      "name": "build",
+      "ecosystem": "pypi",
+      "requirement": "==1.5.0",
+      "source_repository": "https://github.com/pypa/build",
+      "license": "MIT",
+      "relationship": "wheel-build"
+    },
+    {
+      "name": "setuptools",
+      "ecosystem": "pypi",
+      "requirement": "==83.0.0",
+      "source_repository": "https://github.com/pypa/setuptools",
+      "license": "MIT",
+      "relationship": "wheel-build"
+    },
+    {
+      "name": "wheel",
+      "ecosystem": "pypi",
+      "requirement": "==0.47.0",
+      "source_repository": "https://github.com/pypa/wheel",
+      "license": "MIT",
+      "relationship": "wheel-build"
+    }
+  ]
+}

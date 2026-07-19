@@ -1,0 +1,16 @@
+# Exact Python inputs used for v0.1 release artifacts. Keep this file aligned
+# with dependency-source-requirements.json and refresh it through reviewed PRs.
+build==1.5.0
+manifold3d==3.5.2
+numpy==2.4.6
+pefile==2024.8.26
+pillow==12.3.0
+pyinstaller==6.21.0
+PySide6-Essentials==6.11.1
+pytest==9.1.1
+setuptools==83.0.0
+shapely==2.1.2
+shiboken6==6.11.1
+trimesh==4.12.2
+vtk==9.6.2
+wheel==0.47.0
