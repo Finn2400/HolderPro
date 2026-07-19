@@ -13,6 +13,7 @@ import trimesh
 PROJECT_PYTHON = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(PROJECT_PYTHON))
 
+from holderpro.runner import _count_connected_components  # noqa: E402
 from holderpro.solidify import (  # noqa: E402
     FORMAT_VERSION,
     LayerFormatError,
@@ -99,7 +100,7 @@ def test_holes_are_respected_regardless_of_input_winding() -> None:
 
     assert mesh.is_volume
     assert mesh.volume == pytest.approx((100.0 - 16.0) * 2.0)
-    assert len(mesh.split()) == 1
+    assert _count_connected_components(mesh) == 1
 
 
 def test_overlapping_polygons_are_unioned_within_a_layer() -> None:
@@ -136,7 +137,7 @@ def test_adjacent_layers_with_changing_footprints_form_one_solid() -> None:
 
     assert mesh.is_volume
     assert mesh.volume == pytest.approx(4.0)
-    assert len(mesh.split()) == 1
+    assert _count_connected_components(mesh) == 1
 
 
 def test_decimal_roundoff_does_not_separate_adjacent_layers() -> None:
@@ -159,7 +160,7 @@ def test_decimal_roundoff_does_not_separate_adjacent_layers() -> None:
     mesh = solidify_layers(raw)
 
     assert mesh.is_volume
-    assert len(mesh.split()) == 1
+    assert _count_connected_components(mesh) == 1
 
 
 def test_disconnected_supports_are_each_closed_volume() -> None:
@@ -177,7 +178,7 @@ def test_disconnected_supports_are_each_closed_volume() -> None:
     assert mesh.is_watertight
     assert mesh.is_volume
     assert mesh.volume == pytest.approx(2.0)
-    assert len(mesh.split()) == 2
+    assert _count_connected_components(mesh) == 2
 
 
 def test_export_stl_is_binary_watertight_and_positive_volume(tmp_path: Path) -> None:

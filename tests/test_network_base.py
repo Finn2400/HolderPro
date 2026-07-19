@@ -13,6 +13,7 @@ PROJECT_PYTHON = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(PROJECT_PYTHON))
 
 from holderpro.network_base import add_network_base  # noqa: E402
+from holderpro.runner import _count_connected_components  # noqa: E402
 from holderpro.solidify import solidify_layers  # noqa: E402
 
 
@@ -57,7 +58,7 @@ def test_network_base_connects_all_bed_roots_into_one_solid() -> None:
         if layer.get("kind") == "integrated_single_organic_trunk"
     )
     assert mesh.is_watertight and mesh.is_volume
-    assert len(mesh.split(only_watertight=True)) == 1
+    assert _count_connected_components(mesh) == 1
     np.testing.assert_allclose(mesh.bounds[:, 2], (0.0, 1.2), atol=1e-8)
 
 

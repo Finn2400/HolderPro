@@ -22,6 +22,7 @@ from holderpro import (  # noqa: E402
     GenerationResult,
     generate,
 )
+from holderpro.runner import _count_connected_components  # noqa: E402
 
 
 def _real_engine() -> Path:
@@ -219,7 +220,7 @@ def test_multiple_painted_roots_form_one_connected_watertight_base(
     support = _load_support(result)
     assert result.base_node_count >= 2
     assert result.component_count == 1
-    assert len(support.split(only_watertight=False)) == 1
+    assert _count_connected_components(support) == 1
     assert support.bounds[0, 2] == pytest.approx(0.0, abs=1e-6)
 
 
