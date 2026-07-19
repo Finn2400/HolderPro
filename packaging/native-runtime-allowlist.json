@@ -13,7 +13,8 @@
     "libm.so.",
     "libpthread.so.",
     "librt.so.",
-    "libstdc++.so."
+    "libstdc++.so.",
+    "libz.so."
   ],
   "windows": [
     "ADVAPI32.dll",

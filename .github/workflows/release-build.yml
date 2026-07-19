@@ -176,7 +176,7 @@ jobs:
         with:
           python-version: "3.11.9"
           cache: pip
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ github.workspace }}/.native-cache
           key: release-prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
@@ -197,6 +197,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build-native.ps1 -Preset "${{ matrix.target }}" -DownloadSource -Version $env:HOLDERPRO_VERSION -BuildId $env:HOLDERPRO_BUILD_ID
+      - name: Save completed native dependency cache
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ github.workspace }}/.native-cache
+          key: release-prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
       - name: Install native runtime
         shell: bash
         run: |
