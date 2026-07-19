@@ -36,6 +36,8 @@ All notable changes to HolderPro are documented here. The format follows
   development headers explicitly.
 - Automated PrusaSlicer checkouts disable host line-ending conversion so the
   reviewed source hashes remain identical on Windows, macOS, and Linux.
+- The Prusa dependency driver now runs one top-level ExternalProject at a time;
+  each project retains its own parallel build without nested oversubscription.
 
 ### Removed
 

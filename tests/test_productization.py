@@ -450,3 +450,4 @@ def test_native_prefetch_sources_match_audited_manifest() -> None:
         build_helper = (PROJECT / "scripts" / helper_name).read_text(encoding="utf-8")
         assert "core.autocrlf false" in build_helper
         assert "core.eol lf" in build_helper
+        assert "--target deps --parallel 1" in build_helper

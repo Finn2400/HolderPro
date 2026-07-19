@@ -209,7 +209,7 @@ if [ -z "$DEPS_PREFIX" ]; then
     configure_dependencies
     # Upstream ExternalProject recipes parallelize each package internally and
     # explicitly recommend a serial top-level dependency driver.
-    cmake --build "$DEPS_BUILD" --target deps
+    cmake --build "$DEPS_BUILD" --target deps --parallel 1
     DEPS_PREFIX=$CACHED_DEPS_PREFIX
 fi
 [ -d "$DEPS_PREFIX" ] || fail "PrusaSlicer dependency prefix does not exist: $DEPS_PREFIX"

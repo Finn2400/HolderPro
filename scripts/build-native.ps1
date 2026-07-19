@@ -151,7 +151,7 @@ if (-not $DepsPrefix) {
         Assert-LastExitCode "PrusaSlicer dependency configure"
         # Upstream projects parallelize their own compilation; keep the outer
         # ExternalProject driver serial to avoid oversubscribing release builders.
-        & cmake --build $DependencyBuild --target deps
+        & cmake --build $DependencyBuild --target deps --parallel 1
         Assert-LastExitCode "PrusaSlicer dependency build"
     } finally {
         if ($null -eq $PreviousPolicyMinimum) {
