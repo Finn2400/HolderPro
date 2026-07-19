@@ -29,6 +29,7 @@ required_paths = [
   "packaging/scripts/verify_release_provenance.py",
   "packaging/scripts/write_build_environment.py",
   "packaging/scripts/write_release_asset_manifest.py",
+  "scripts/prefetch-native-dependencies.cmake",
 ]
 
 forbidden_globs = [

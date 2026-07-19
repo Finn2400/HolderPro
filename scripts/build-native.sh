@@ -148,6 +148,10 @@ if [ ! -d "$SOURCE" ] && [ "$DOWNLOAD_SOURCE" -eq 1 ]; then
     trap 'rm -rf "$TEMP_SOURCE"' EXIT HUP INT TERM
     echo "Fetching pinned PrusaSlicer source into $SOURCE" >&2
     git init -q "$TEMP_SOURCE"
+    # Keep the fetched worktree byte-identical on every host. In particular,
+    # Git for Windows otherwise converts reviewed LF source files to CRLF.
+    git -C "$TEMP_SOURCE" config core.autocrlf false
+    git -C "$TEMP_SOURCE" config core.eol lf
     git -C "$TEMP_SOURCE" remote add origin https://github.com/prusa3d/PrusaSlicer.git
     git -C "$TEMP_SOURCE" fetch --depth 1 origin "$COMMIT"
     git -C "$TEMP_SOURCE" checkout -q --detach FETCH_HEAD
@@ -194,6 +198,13 @@ if [ -z "$DEPS_PREFIX" ]; then
             ;;
     esac
     mkdir -p "$DEPS_BUILD" "$DOWNLOAD_CACHE"
+    # CMake 4 removed implicit compatibility with dependency projects whose
+    # minimum predates 3.5. This user-side policy floor preserves their CMake
+    # 3.5 behavior without modifying the pinned PrusaSlicer checkout.
+    export CMAKE_POLICY_VERSION_MINIMUM=3.5
+    cmake \
+        "-DHOLDERPRO_DEP_DOWNLOAD_DIR=$DOWNLOAD_CACHE" \
+        -P "$ROOT/scripts/prefetch-native-dependencies.cmake"
     echo "Building pinned PrusaSlicer dependencies in $DEPS_BUILD" >&2
     configure_dependencies
     # Upstream ExternalProject recipes parallelize each package internally and

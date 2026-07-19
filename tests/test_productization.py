@@ -424,3 +424,29 @@ def test_doctor_distinguishes_generation_and_desktop_readiness() -> None:
     assert not core_only.desktop_ok
     assert desktop.ok and desktop.desktop_ok
     assert json.loads(core_only.to_json())["desktop_ok"] is False
+
+
+def test_native_prefetch_sources_match_audited_manifest() -> None:
+    manifest = json.loads(
+        (PROJECT / "packaging/prusaslicer-native-dependency-sources.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    gmp = next(item for item in manifest["components"] if item["name"] == "GMP")
+    helper = (PROJECT / "scripts/prefetch-native-dependencies.cmake").read_text(
+        encoding="utf-8"
+    )
+
+    assert gmp["source_sha256"] in helper
+    assert gmp["source_url"] in helper
+    for mirror in gmp["verified_mirror_urls"]:
+        assert mirror in helper
+
+    workflow = (PROJECT / ".github/workflows/native.yml").read_text(encoding="utf-8")
+    assert workflow.count('"scripts/prefetch-native-dependencies.cmake"') == 2
+    assert workflow.count('"packaging/prusaslicer-native-dependency-sources.json"') == 2
+
+    for helper_name in ("build-native.sh", "build-native.ps1"):
+        build_helper = (PROJECT / "scripts" / helper_name).read_text(encoding="utf-8")
+        assert "core.autocrlf false" in build_helper
+        assert "core.eol lf" in build_helper

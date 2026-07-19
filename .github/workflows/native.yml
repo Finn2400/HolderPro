@@ -6,6 +6,8 @@ on:
     paths:
       - "native/**"
       - "scripts/build-native.*"
+      - "scripts/prefetch-native-dependencies.cmake"
+      - "packaging/prusaslicer-native-dependency-sources.json"
       - "packaging/native-runtime-allowlist.json"
       - "packaging/release-targets.json"
       - "packaging/scripts/audit_native_dependencies.py"
@@ -18,6 +20,8 @@ on:
     paths:
       - "native/**"
       - "scripts/build-native.*"
+      - "scripts/prefetch-native-dependencies.cmake"
+      - "packaging/prusaslicer-native-dependency-sources.json"
       - "packaging/native-runtime-allowlist.json"
       - "packaging/release-targets.json"
       - "packaging/scripts/audit_native_dependencies.py"
@@ -68,9 +72,9 @@ jobs:
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ github.workspace }}/.native-cache
-          key: prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'native/CMakePresets.json') }}
+          key: prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool m4 ninja-build texinfo
+        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool libgl1-mesa-dev m4 ninja-build texinfo
       - if: runner.os == 'macOS'
         run: |
           brew install autoconf automake libtool m4 ninja texinfo

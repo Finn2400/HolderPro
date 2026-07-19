@@ -74,6 +74,11 @@ if (-not (Test-Path -LiteralPath $PrusaSlicerSource -PathType Container) -and $D
         Write-Host "Fetching pinned PrusaSlicer source into $PrusaSlicerSource"
         & git init -q $TemporarySource
         Assert-LastExitCode "git init"
+        # Prevent Git for Windows from rewriting the reviewed upstream bytes.
+        & git -C $TemporarySource config core.autocrlf false
+        Assert-LastExitCode "git core.autocrlf configuration"
+        & git -C $TemporarySource config core.eol lf
+        Assert-LastExitCode "git core.eol configuration"
         & git -C $TemporarySource remote add origin https://github.com/prusa3d/PrusaSlicer.git
         Assert-LastExitCode "git remote add"
         & git -C $TemporarySource fetch --depth 1 origin $Commit
@@ -116,25 +121,45 @@ if ($SkipDeps -and -not $DepsPrefix) {
 if (-not $DepsPrefix) {
     Require-Command "git" "Git is required by PrusaSlicer's dependency build."
     New-Item -ItemType Directory -Force -Path $DependencyBuild, $DependencyDownloads | Out-Null
-    Write-Host "Building pinned PrusaSlicer dependencies in $DependencyBuild"
-    $DependencyArguments = @(
-        "-S", (Join-Path $PrusaSlicerSource "deps"),
-        "-B", $DependencyBuild,
-        "-G", "Ninja",
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DDEP_DOWNLOAD_DIR=$DependencyDownloads",
-        "-DDEP_DEBUG=OFF",
-        "-DPrusaSlicer_deps_SELECT_ALL=OFF"
-    )
-    foreach ($Package in $DependencyAllowlist) {
-        $DependencyArguments += "-DPrusaSlicer_deps_SELECT_$Package=ON"
+    $PreviousPolicyMinimum = $env:CMAKE_POLICY_VERSION_MINIMUM
+    try {
+        # CMake 4 removed implicit compatibility with dependency projects whose
+        # minimum predates 3.5. Preserve that documented compatibility without
+        # modifying the pinned PrusaSlicer checkout.
+        $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+        $PrefetchArguments = @(
+            "-DHOLDERPRO_DEP_DOWNLOAD_DIR=$DependencyDownloads",
+            "-P",
+            (Join-Path $Root "scripts\prefetch-native-dependencies.cmake")
+        )
+        & cmake @PrefetchArguments
+        Assert-LastExitCode "pinned native dependency prefetch"
+        Write-Host "Building pinned PrusaSlicer dependencies in $DependencyBuild"
+        $DependencyArguments = @(
+            "-S", (Join-Path $PrusaSlicerSource "deps"),
+            "-B", $DependencyBuild,
+            "-G", "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DDEP_DOWNLOAD_DIR=$DependencyDownloads",
+            "-DDEP_DEBUG=OFF",
+            "-DPrusaSlicer_deps_SELECT_ALL=OFF"
+        )
+        foreach ($Package in $DependencyAllowlist) {
+            $DependencyArguments += "-DPrusaSlicer_deps_SELECT_$Package=ON"
+        }
+        & cmake @DependencyArguments
+        Assert-LastExitCode "PrusaSlicer dependency configure"
+        # Upstream projects parallelize their own compilation; keep the outer
+        # ExternalProject driver serial to avoid oversubscribing release builders.
+        & cmake --build $DependencyBuild --target deps
+        Assert-LastExitCode "PrusaSlicer dependency build"
+    } finally {
+        if ($null -eq $PreviousPolicyMinimum) {
+            Remove-Item Env:CMAKE_POLICY_VERSION_MINIMUM -ErrorAction SilentlyContinue
+        } else {
+            $env:CMAKE_POLICY_VERSION_MINIMUM = $PreviousPolicyMinimum
+        }
     }
-    & cmake @DependencyArguments
-    Assert-LastExitCode "PrusaSlicer dependency configure"
-    # Upstream projects parallelize their own compilation; keep the outer
-    # ExternalProject driver serial to avoid oversubscribing release builders.
-    & cmake --build $DependencyBuild --target deps
-    Assert-LastExitCode "PrusaSlicer dependency build"
     $DepsPrefix = $CachedDepsPrefix
 }
 if (-not (Test-Path -LiteralPath $DepsPrefix -PathType Container)) {

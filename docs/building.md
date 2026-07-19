@@ -33,9 +33,15 @@ A native build requires:
 - a PrusaSlicer dependency prefix built for the same target.
 
 Setup helpers verify prerequisites and never install a package manager or alter
-a supplied checkout. Source download occurs only when the explicit
-`--download-source` / `-DownloadSource` option is passed. Release users never
-need these tools.
+a supplied checkout. Downloading the PrusaSlicer checkout occurs only when the
+explicit `--download-source` / `-DownloadSource` option is passed. Dependency
+source archives are downloaded into the private build cache and verified
+against their pinned hashes. Release users never need these tools.
+
+The helpers also prefetch GMP 6.2.1 from hash-verified GNU HTTPS mirrors before
+running PrusaSlicer's dependency graph. They set CMake 4's external policy
+minimum to 3.5 so older third-party CMake projects retain their documented
+compatibility behavior; neither action patches the pinned PrusaSlicer source.
 
 Available configure presets are:
 

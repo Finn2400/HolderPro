@@ -31,6 +31,11 @@ All notable changes to HolderPro are documented here. The format follows
 - Native support-layer staging now creates an atomically private directory and
   reserves its output exclusively, using `0700`/`0600` modes on POSIX and a
   protected owner-only DACL on Windows.
+- Native dependency builds tolerate CMake 4's removed legacy-policy default,
+  prefetch GMP from hash-verified GNU mirrors, and provision Linux OpenGL
+  development headers explicitly.
+- Automated PrusaSlicer checkouts disable host line-ending conversion so the
+  reviewed source hashes remain identical on Windows, macOS, and Linux.
 
 ### Removed
 
