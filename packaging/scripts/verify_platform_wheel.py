@@ -7,6 +7,7 @@ import argparse
 import base64
 import csv
 from email.parser import BytesParser
+from email.message import Message
 import hashlib
 import io
 import json
@@ -16,12 +17,48 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from build_native_license_bundle import verify_native_license_mapping
 from package_identity import (
     PROJECT_NAME,
     expected_dist_info,
     validate_release_identity,
 )
+from release_version import SOURCE_OFFER_NAME, identity_from_pep440, source_offer
 from verify_native_stage import NATIVE_MANIFEST_NAME, TARGETS, verify_native_stage
+
+
+PROHIBITED_VENDORED_COMPONENTS = {
+    "_pyinstaller_hooks_contrib",
+    "manifold3d",
+    "numpy",
+    "pyinstaller",
+    "pyside2",
+    "pyside6",
+    "pyqt5",
+    "pyqt6",
+    "qt5",
+    "qt6",
+    "shapely",
+    "shiboken2",
+    "shiboken6",
+    "trimesh",
+    "vtk",
+    "vtkmodules",
+}
+WINDOWS_SYSTEM_DLLS = {
+    "advapi32.dll",
+    "bcrypt.dll",
+    "comdlg32.dll",
+    "crypt32.dll",
+    "gdi32.dll",
+    "kernel32.dll",
+    "ole32.dll",
+    "oleaut32.dll",
+    "opengl32.dll",
+    "shell32.dll",
+    "user32.dll",
+    "ws2_32.dll",
+}
 
 
 def _record_digest(data: bytes) -> str:
@@ -43,6 +80,151 @@ def _safe_archive_name(name: str) -> None:
 
 def _mode(info: zipfile.ZipInfo) -> int:
     return (info.external_attr >> 16) & 0o777
+
+
+def _verify_corresponding_source_project_url(
+    metadata: Message, version: str
+) -> None:
+    expected_source_url = identity_from_pep440(version).corresponding_source_url
+    corresponding_urls = [
+        value
+        for value in metadata.get_all("Project-URL", [])
+        if value.partition(",")[0].strip().casefold() == "corresponding source"
+    ]
+    expected_project_url = f"Corresponding Source, {expected_source_url}"
+    if corresponding_urls != [expected_project_url]:
+        raise RuntimeError(
+            "wheel must contain exactly one version-matched Corresponding "
+            "Source Project-URL"
+        )
+
+
+def _expected_source_entries(repository: Path) -> dict[str, bytes]:
+    package = repository.resolve() / "src/holderpro"
+    expected: dict[str, bytes] = {}
+    candidates = [*package.rglob("*.py"), *(package / "assets").glob("*.svg")]
+    for path in sorted(set(candidates)):
+        if "__pycache__" in path.parts or path.is_symlink() or not path.is_file():
+            continue
+        name = (Path("holderpro") / path.relative_to(package)).as_posix()
+        expected[name] = path.read_bytes()
+    return expected
+
+
+def _prohibited_vendored_paths(names: set[str]) -> list[str]:
+    prohibited: list[str] = []
+    for name in sorted(names):
+        parts = PurePosixPath(name).parts
+        components = {
+            part.lower().replace("-", "_").split(".", 1)[0] for part in parts
+        }
+        basename = parts[-1].lower()
+        is_msvc_runtime = bool(
+            re.fullmatch(
+                r"(?:msvcp|vcruntime|concrt|vcomp|vcamp)\d[^/]*\.dll",
+                basename,
+            )
+            or basename == "ucrtbase.dll"
+            or basename.startswith("api-ms-win-")
+            or basename in WINDOWS_SYSTEM_DLLS
+        )
+        if components & PROHIBITED_VENDORED_COMPONENTS or is_msvc_runtime:
+            prohibited.append(name)
+    return prohibited
+
+
+def _verify_closed_inventory(
+    entries: dict[str, bytes],
+    repository: Path,
+    dist_info: str,
+    native_names: set[str],
+    version: str,
+) -> None:
+    """Require only reviewed HolderPro sources, metadata, and one native engine."""
+
+    prohibited = _prohibited_vendored_paths(set(entries))
+    if prohibited:
+        raise RuntimeError(
+            "wheel vendors prohibited Python, GUI, build, or system runtime files: "
+            + ", ".join(prohibited)
+        )
+
+    native_license_prefix = f"{dist_info}/licenses/native/"
+    native_license_files = {
+        name.removeprefix(native_license_prefix): data
+        for name, data in entries.items()
+        if name.startswith(native_license_prefix)
+    }
+    try:
+        reviewed_native_manifest = json.loads(
+            (
+                repository
+                / "packaging/prusaslicer-native-dependency-sources.json"
+            ).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("could not read the reviewed native dependency manifest") from exc
+    verify_native_license_mapping(native_license_files, reviewed_native_manifest)
+
+    expected_sources = _expected_source_entries(repository)
+    expected_metadata = {
+        f"{dist_info}/METADATA",
+        f"{dist_info}/WHEEL",
+        f"{dist_info}/entry_points.txt",
+        f"{dist_info}/top_level.txt",
+        f"{dist_info}/RECORD",
+        f"{dist_info}/{SOURCE_OFFER_NAME}",
+        f"{dist_info}/licenses/LICENSE",
+        f"{dist_info}/licenses/THIRD_PARTY_NOTICES.md",
+        (
+            f"{dist_info}/licenses/upstream/"
+            "prusaslicer-2.9.6-organic/LICENSE"
+        ),
+    }
+    expected = set(expected_sources) | expected_metadata | native_names
+    expected.update(native_license_prefix + name for name in native_license_files)
+    actual = set(entries)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise RuntimeError(
+            f"wheel inventory is not closed: missing={missing}, extra={extra}"
+        )
+    changed = sorted(
+        name for name, data in expected_sources.items() if entries[name] != data
+    )
+    if changed:
+        raise RuntimeError(
+            "wheel HolderPro sources differ from the release tree: "
+            + ", ".join(changed)
+        )
+
+    expected_licenses = {
+        f"{dist_info}/licenses/LICENSE": repository / "LICENSE",
+        (
+            f"{dist_info}/licenses/THIRD_PARTY_NOTICES.md"
+        ): repository / "THIRD_PARTY_NOTICES.md",
+        (
+            f"{dist_info}/licenses/upstream/"
+            "prusaslicer-2.9.6-organic/LICENSE"
+        ): repository / "upstream/prusaslicer-2.9.6-organic/LICENSE",
+    }
+    changed_licenses = sorted(
+        name
+        for name, path in expected_licenses.items()
+        if entries[name] != path.read_bytes()
+    )
+    if changed_licenses:
+        raise RuntimeError(
+            "wheel license files differ from the release tree: "
+            + ", ".join(changed_licenses)
+        )
+
+    offer_name = f"{dist_info}/{SOURCE_OFFER_NAME}"
+    if entries[offer_name] != source_offer(version):
+        raise RuntimeError(
+            "wheel corresponding-source offer is missing or version-mismatched"
+        )
 
 
 def _verify_record(
@@ -189,6 +371,7 @@ def main() -> int:
                 "wheel METADATA identity mismatch: "
                 f"Name={metadata.get('Name')!r}, Version={metadata.get('Version')!r}"
             )
+        _verify_corresponding_source_project_url(metadata, source_version)
         wheel_metadata = BytesParser().parsebytes(entries[wheel_name])
         expected_tag = f"py3-none-{target.wheel_tag}"
         if wheel_metadata.get("Root-Is-Purelib") != "false":
@@ -218,11 +401,37 @@ def main() -> int:
         }
         extras = native_names - allowed_fixed
         if target.os_name == "windows":
-            rejected = [name for name in extras if not name.lower().endswith(".dll")]
+            rejected = [
+                name
+                for name in extras
+                if not name.lower().endswith(".dll")
+                or _prohibited_vendored_paths({name})
+            ]
         else:
             rejected = list(extras)
         if rejected:
-            raise RuntimeError("wheel contains unexpected native files: " + ", ".join(sorted(rejected)))
+            raise RuntimeError(
+                "wheel contains unexpected or prohibited native files: "
+                + ", ".join(sorted(rejected))
+            )
+
+        _verify_closed_inventory(
+            entries, args.repository, dist_info, native_names, source_version
+        )
+        offer_name = f"{dist_info}/{SOURCE_OFFER_NAME}"
+        if _mode(infos[offer_name]) != 0o644:
+            raise RuntimeError("wheel corresponding-source offer mode must be 0644")
+        native_license_prefix = f"{dist_info}/licenses/native/"
+        invalid_license_modes = sorted(
+            name
+            for name in names
+            if name.startswith(native_license_prefix) and _mode(infos[name]) != 0o644
+        )
+        if invalid_license_modes:
+            raise RuntimeError(
+                "wheel native license files must have mode 0644: "
+                + ", ".join(invalid_license_modes)
+            )
 
         for name in native_names:
             expected_mode = 0o755 if name == expected_engine else 0o644

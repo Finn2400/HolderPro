@@ -61,6 +61,10 @@ jobs:
             --display-version "${{ steps.version.outputs.display }}" \
             --pep440-version "${{ steps.version.outputs.pep440 }}" \
             --include-checksums
+      - name: Reverify the complete corresponding-source archive
+        run: |
+          python packaging/scripts/verify_corresponding_source.py \
+            "release-assets/holderpro-${{ steps.version.outputs.display }}-corresponding-source.tar.zst"
       - name: Verify every payload is bound to the current tag commit
         run: |
           python packaging/scripts/verify_release_provenance.py release-assets \
@@ -96,7 +100,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Publish the existing source-bearing draft without rebuilding
+      - name: Publish the existing GitHub draft without rebuilding
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

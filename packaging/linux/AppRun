@@ -1,7 +1,0 @@
-#!/bin/sh
-case $0 in
-    */*) HERE=${0%/*} ;;
-    *) HERE=. ;;
-esac
-HERE=$(CDPATH= cd -- "$HERE" && pwd)
-exec "$HERE/usr/bin/HolderPro" "$@"

@@ -11,16 +11,6 @@
       "relationship": "statically-linked"
     },
     {
-      "name": "CPython",
-      "ecosystem": "source-archive",
-      "requirement": "==3.11.9",
-      "source_repository": "https://github.com/python/cpython",
-      "source_url": "https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tar.xz",
-      "source_sha256": "9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87",
-      "license": "PSF-2.0",
-      "relationship": "runtime-interpreter"
-    },
-    {
       "name": "numpy",
       "ecosystem": "pypi",
       "requirement": ">=1.26,<3",
@@ -55,7 +45,7 @@
     {
       "name": "PySide6-Essentials",
       "ecosystem": "pypi",
-      "requirement": ">=6.7,<6.10",
+      "requirement": ">=6.7,<7",
       "source_repository": "https://code.qt.io/cgit/pyside/pyside-setup.git/",
       "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
       "relationship": "optional-runtime-dynamic"
@@ -77,20 +67,12 @@
       "relationship": "optional-runtime-dynamic"
     },
     {
-      "name": "PyInstaller",
+      "name": "pefile",
       "ecosystem": "pypi",
-      "requirement": "==6.21.0",
-      "source_repository": "https://github.com/pyinstaller/pyinstaller",
-      "license": "GPL-2.0-or-later WITH Bootloader-exception",
-      "relationship": "desktop-build-and-bootloader"
-    },
-    {
-      "name": "pillow",
-      "ecosystem": "pypi",
-      "requirement": "==12.3.0",
-      "source_repository": "https://github.com/python-pillow/Pillow",
-      "license": "HPND",
-      "relationship": "desktop-build"
+      "requirement": "==2024.8.26",
+      "source_repository": "https://github.com/erocarrera/pefile",
+      "license": "MIT",
+      "relationship": "native-runtime-audit-build-tool"
     },
     {
       "name": "build",

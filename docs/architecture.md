@@ -83,10 +83,11 @@ Preview reduction uses VTK's quadric decimator. Replacing VTK with a custom
 
 ## Distribution
 
-Each platform wheel includes one matching native engine. Desktop packages use
-the same engine artifact and a PyInstaller one-directory layout. This keeps Qt
-and other replaceable libraries visible and makes native dependency auditing
-more reliable than a one-file self-extractor.
+Each platform wheel includes one matching native engine. GitHub Releases carry
+the four exact wheels and their source/provenance material; PyPI receives those
+same wheels without rebuilding. The optional GUI remains an ordinary Python
+extra, so Qt and VTK are installed as separate, replaceable distributions
+rather than copied into a frozen application.
 
 The native engine never downloads a component at runtime. User models, paint,
 temporary geometry, and diagnostic bundles remain local.

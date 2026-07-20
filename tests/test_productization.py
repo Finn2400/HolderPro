@@ -40,11 +40,6 @@ from holderpro.mesh_io import load_reference_mesh  # noqa: E402
 import holderpro.engine as engine_module  # noqa: E402
 import holderpro.ui as ui_module  # noqa: E402
 from holderpro.ui import _release_tag  # noqa: E402
-from sign_macos_nested_code import (  # noqa: E402
-    is_mach_o,
-    nested_signing_order,
-    sign_nested_code,
-)
 from build_dependency_manifest import exact_constraints  # noqa: E402
 
 
@@ -244,6 +239,22 @@ def test_engine_without_version_json_is_rejected(
     )
 
     with pytest.raises(EngineError, match="did not support --version-json"):
+        inspect_engine(executable)
+
+
+def test_windows_missing_system_runtime_has_actionable_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = _executable(tmp_path / "holderpro-organic-engine.exe")
+    loader_error = OSError("The specified module could not be found")
+    loader_error.winerror = 126  # type: ignore[attr-defined]
+    monkeypatch.setattr("holderpro.engine.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "holderpro.engine.subprocess.run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(loader_error),
+    )
+
+    with pytest.raises(EngineError, match=r"Visual C\+\+ v14 x64 Redistributable"):
         inspect_engine(executable)
 
 
@@ -486,67 +497,6 @@ def test_native_prefetch_sources_match_audited_manifest() -> None:
         assert definition in native_cmake
 
 
-def test_macos_nested_signing_finds_each_physical_mach_o_once(
-    tmp_path: Path,
-) -> None:
-    application = tmp_path / "HolderPro.app"
-    executable = application / "Contents/MacOS/HolderPro"
-    framework = application / "Contents/Frameworks/Example.framework"
-    library = framework / "Versions/A/Example"
-    executable.parent.mkdir(parents=True)
-    library.parent.mkdir(parents=True)
-    executable.write_bytes(b"\xcf\xfa\xed\xfe" + b"app")
-    library.write_bytes(b"\xca\xfe\xba\xbe" + b"library")
-    (framework / "Example").symlink_to("Versions/A/Example")
-    java_class = application / "Contents/Resources/Example.class"
-    java_class.parent.mkdir(parents=True)
-    java_class.write_bytes(b"\xca\xfe\xba\xbe" + b"java")
-
-    files, bundles = nested_signing_order(application)
-
-    assert set(files) == {executable, library}
-    assert bundles == [framework]
-    assert is_mach_o(java_class) is False
-
-
-def test_macos_nested_signing_is_inside_out_without_deep_signing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    application = tmp_path / "HolderPro.app"
-    executable = application / "Contents/MacOS/HolderPro"
-    framework = application / "Contents/Frameworks/Example.framework"
-    library = framework / "Versions/A/Example"
-    executable.parent.mkdir(parents=True)
-    library.parent.mkdir(parents=True)
-    executable.write_bytes(b"\xcf\xfa\xed\xfe" + b"app")
-    library.write_bytes(b"\xcf\xfa\xed\xfe" + b"library")
-    calls: list[list[str]] = []
-
-    monkeypatch.setattr(
-        "sign_macos_nested_code.subprocess.run",
-        lambda command, check: calls.append(command),
-    )
-
-    assert sign_nested_code(application, "Developer ID fixture") == (2, 1)
-    assert [Path(command[-1]) for command in calls] == [
-        library,
-        executable,
-        framework,
-    ]
-    assert all("--deep" not in command for command in calls)
-
-    packaging_helper = (PROJECT / "packaging/macos/package_dmg.sh").read_text(
-        encoding="utf-8"
-    )
-    assert "sign_macos_nested_code.py" in packaging_helper
-    assert "codesign --force --deep" not in packaging_helper
-    assert "codesign --verify --deep --strict" in packaging_helper
-    assert (
-        'spctl --assess --type execute --verbose=2 "$MOUNT/HolderPro.app"'
-        in packaging_helper
-    )
-
-
 def test_pypi_oidc_job_contains_no_shell_or_repository_token() -> None:
     workflow = (PROJECT / ".github/workflows/release-publish.yml").read_text(
         encoding="utf-8"
@@ -566,25 +516,40 @@ def test_release_constraints_pin_the_build_dependency_closure() -> None:
     resolved = exact_constraints(PROJECT / "packaging/release-constraints.txt")
 
     expected_transitive = {
-        "altgraph",
         "colorama",
         "contourpy",
         "cycler",
         "fonttools",
         "iniconfig",
         "kiwisolver",
-        "macholib",
         "matplotlib",
         "packaging",
         "pluggy",
         "pygments",
-        "pyinstaller-hooks-contrib",
         "pyparsing",
         "pyproject-hooks",
         "python-dateutil",
-        "pywin32-ctypes",
         "six",
     }
     assert expected_transitive <= resolved.keys()
-    assert resolved["macholib"] == "1.16.4"
-    assert resolved["pywin32-ctypes"] == "0.2.3"
+
+
+def test_release_automation_is_github_and_pypi_wheel_only() -> None:
+    workflows = "\n".join(
+        (PROJECT / ".github/workflows" / name).read_text(encoding="utf-8")
+        for name in ("release-build.yml", "release-publish.yml")
+    )
+    retired_markers = (
+        "APPLE_",
+        "AZURE_",
+        "notarytool",
+        "artifact-signing-action",
+        "PyInstaller",
+        ".dmg",
+        "AppImage",
+        "setup.exe",
+    )
+    for marker in retired_markers:
+        assert marker not in workflows
+    assert "pypa/gh-action-pypi-publish" in workflows
+    assert "gh release create" in workflows

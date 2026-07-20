@@ -9,11 +9,14 @@ All notable changes to HolderPro are documented here. The format follows
 ### Added
 
 - Packaging and release infrastructure for the exact Prusa-based Organic tool.
-- Cross-platform native, wheel, and desktop release matrices.
-- Corresponding-source, SBOM, provenance, signature, and clean-install gates.
+- Cross-platform native-engine and platform-wheel release matrices.
+- Corresponding-source, SBOM, provenance, checksum, attestation, and
+  clean-install gates.
 - Public `holderpro` command structure and `holderpro-gui` launcher.
-- Fail-closed macOS deployment-target and inside-out code-signing audits.
-- A legal-review brief and exact Apple, Azure, and PyPI release setup guide.
+- Fail-closed macOS deployment-target audits.
+- Permanent free-software governance, release-authenticity, privacy, and
+  uninstalling policies.
+- A legal-review brief and exact GitHub Releases and PyPI setup guide.
 
 ### Changed
 
@@ -22,8 +25,8 @@ All notable changes to HolderPro are documented here. The format follows
 - Painted posed meshes now use a dependency-free, face-order-preserving 3MF
   handoff so PrusaSlicer repair cannot detach paint from triangle indices.
 - The complete Python package is covered by the mypy release gate.
-- macOS desktop builds resolve a target-specific, fully pinned Python wheel
-  closure compatible with the advertised macOS 13 floor.
+- The official distribution is limited to the same four bundled-engine wheels
+  on GitHub Releases and PyPI; GUI dependencies remain separately installable.
 
 ### Fixed
 
@@ -48,11 +51,10 @@ All notable changes to HolderPro are documented here. The format follows
   header definitions explicitly instead of relying on upstream directory scope.
 - PyPI publication grants OIDC only to the two-action publish job; source and
   artifact checks run before that credential is available.
-- Linux AppImages launch correctly even when the executable search path is
-  empty during clean-machine testing.
-
 ### Removed
 
 - The retired independent approximation and its legacy dependency stack.
+- Standalone DMGs, Windows installers, portable application archives,
+  AppImages, PyInstaller freezing, and paid platform-signing services.
 
 [Unreleased]: https://github.com/Finn2400/HolderPro/compare/HEAD...HEAD

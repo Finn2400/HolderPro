@@ -1313,9 +1313,9 @@ if QtWidgets is not None:
             )
             text = f"""
                 <h2>HolderPro {__version__}</h2>
-                <p>Copyright © 2026 Finn. HolderPro is free software licensed
-                under the GNU Affero General Public License, version 3 or later,
-                and comes with no warranty.</p>
+                <p>Copyright © 2026 HolderPro contributors. HolderPro is free
+                software licensed under the GNU Affero General Public License,
+                version 3 or later, and comes with no warranty.</p>
                 <p><a href="{release_url}">Version-specific release and
                 corresponding-source archive</a> ·
                 <a href="{source_url}">exact HolderPro source tree</a> ·
