@@ -28,7 +28,7 @@ jobs:
       display: ${{ steps.version.outputs.display }}
       build_commit: ${{ steps.source_commit.outputs.build_commit }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
@@ -87,7 +87,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.preflight.outputs.build_commit }}
           fetch-depth: 0
@@ -168,7 +168,7 @@ jobs:
       HOLDERPRO_VERSION: ${{ needs.preflight.outputs.pep440 }}
       HOLDERPRO_BUILD_ID: ${{ needs.preflight.outputs.build_commit }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.preflight.outputs.build_commit }}
           fetch-depth: 0
@@ -710,7 +710,7 @@ jobs:
       contents: write
       attestations: read
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.preflight.outputs.build_commit }}
       - run: sudo apt-get update && sudo apt-get install -y zstd
