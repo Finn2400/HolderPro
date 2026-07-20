@@ -480,6 +480,9 @@ def test_native_prefetch_sources_match_audited_manifest() -> None:
         assert "libgl1-mesa-dev" in workflow_text
         assert "actions/cache/restore@" in workflow_text
         assert "actions/cache/save@" in workflow_text
+        assert "path: ${{ github.workspace }}/.native-cache\n" not in workflow_text
+        assert ".native-cache/downloads" in workflow_text
+        assert ".native-cache/prusaslicer-b028299c770b8380ee81c921a2867d522f288123" in workflow_text
 
     for helper_name in ("build-native.sh", "build-native.ps1"):
         build_helper = (PROJECT / "scripts" / helper_name).read_text(encoding="utf-8")
@@ -510,6 +513,16 @@ def test_pypi_oidc_job_contains_no_shell_or_repository_token() -> None:
     assert "id-token: write" in publication
     assert "actions/download-artifact@" in publication
     assert "pypa/gh-action-pypi-publish@" in publication
+
+
+def test_release_promotion_never_interpolates_raw_tag_input_into_shell() -> None:
+    workflow = (PROJECT / ".github/workflows/release-publish.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert workflow.count("${{ inputs.tag }}") == 1
+    assert "RELEASE_TAG: ${{ inputs.tag }}" in workflow
+    assert "pypi-wheels-${{ inputs.tag }}" not in workflow
 
 
 def test_release_constraints_pin_the_build_dependency_closure() -> None:

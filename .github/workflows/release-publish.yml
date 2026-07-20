@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
+
 jobs:
   verify:
     runs-on: ubuntu-22.04
@@ -25,26 +28,26 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
       - run: sudo apt-get update && sudo apt-get install -y zstd
       - id: version
-        run: python packaging/scripts/release_version.py "${{ inputs.tag }}" --github-output >> "$GITHUB_OUTPUT"
+        run: python packaging/scripts/release_version.py "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
       - name: Download exact draft assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release="repos/$GITHUB_REPOSITORY/releases/tags/${{ inputs.tag }}"
+          release="repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"
           test "$(gh api "$release" --jq .draft)" = true
-          test "$(gh api "$release" --jq .tag_name)" = "${{ inputs.tag }}"
+          test "$(gh api "$release" --jq .tag_name)" = "$RELEASE_TAG"
           git fetch --no-tags origin main:refs/remotes/origin/main
-          test "$(git cat-file -t '${{ inputs.tag }}')" = tag
-          tag_commit=$(git rev-list -n 1 "${{ inputs.tag }}")
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          tag_commit=$(git rev-list -n 1 "$RELEASE_TAG")
           test "$tag_commit" = "$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$tag_commit" origin/main
           echo "HOLDERPRO_BUILD_ID=$tag_commit" >> "$GITHUB_ENV"
           mkdir release-assets
-          gh release download "${{ inputs.tag }}" --dir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
       - name: Recheck legal publication gates
         env:
           LICENSE_REVIEW_APPROVED: ${{ vars.HOLDERPRO_LICENSE_REVIEW_APPROVED }}
@@ -89,7 +92,7 @@ jobs:
           test -z "$(find release-assets -maxdepth 1 -type f -name 'holderpro*.tar.gz' -print -quit)"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ steps.version.outputs.pep440 }}
           path: wheels
           if-no-files-found: error
 
@@ -106,7 +109,7 @@ jobs:
         run: |
           args=(--draft=false)
           if [ "${{ needs.verify.outputs.prerelease }}" = true ]; then args+=(--prerelease=true); else args+=(--prerelease=false --latest); fi
-          gh release edit "${{ inputs.tag }}" "${args[@]}" --repo "$GITHUB_REPOSITORY"
+          gh release edit "$RELEASE_TAG" "${args[@]}" --repo "$GITHUB_REPOSITORY"
 
   verify-public-source:
     needs: [verify, publish-release]
@@ -116,7 +119,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ needs.verify.outputs.pep440 }}
           path: dist
       - name: Reject source distributions
         run: |
@@ -127,11 +130,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           source_name="holderpro-${{ needs.verify.outputs.display }}-corresponding-source.tar.zst"
-          gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --pattern "$source_name" --dir "$RUNNER_TEMP/public-source"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$source_name" --dir "$RUNNER_TEMP/public-source"
           test -s "$RUNNER_TEMP/public-source/$source_name"
 
   pypi:
-    needs: verify-public-source
+    needs: [verify, verify-public-source]
     runs-on: ubuntu-22.04
     environment: pypi
     permissions:
@@ -139,6 +142,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ needs.verify.outputs.pep440 }}
           path: dist
       - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
