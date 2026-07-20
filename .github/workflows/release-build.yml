@@ -481,6 +481,8 @@ jobs:
           render_window.Render()
           assert preview._support_actor.GetVisibility()
           assert preview._support_polydata.GetNumberOfCells() == len(support.faces)
+          assert preview.height_scrubber.isHidden()
+          assert not preview.height_scrubber.isEnabled()
           assert render_window.SupportsOpenGL()
           assert all(
               tuple(actor.GetProperty().GetColor()) == (1.0, 1.0, 1.0)
@@ -499,6 +501,15 @@ jobs:
           )
           preview.set_paint_mode(PAINT_MODE_POSE)
           assert all(actor.GetVisibility() for actor in preview._pose_handle_actors.values())
+          assert not preview.height_scrubber.isHidden()
+          assert preview.height_scrubber.isEnabled()
+          initial_height = preview._pose[3]
+          preview.height_scrubber.heightDragged.emit(-10.0)
+          assert abs(preview._pose[3] - initial_height - 1.5) < 1e-9
+          assert not preview._support_actor.GetVisibility()
+          assert preview._analysis_pose != preview._pose
+          preview.height_scrubber.dragFinished.emit()
+          assert preview._analysis_pose == preview._pose
           initial_pose = preview._pose
           preview.rotate_pose_axis("z", 12.0, interactive=True)
           assert preview._pose != initial_pose
@@ -509,6 +520,11 @@ jobs:
           assert not any(
               actor.GetVisibility() for actor in preview._pose_handle_actors.values()
           )
+          assert preview.height_scrubber.isHidden()
+          assert not preview.height_scrubber.isEnabled()
+          locked_pose = preview._pose
+          preview.height_scrubber.heightDragged.emit(-10.0)
+          assert preview._pose == locked_pose
           assert preview.begin_pose_drag(0, 0) is None
           preview.close()
           application.processEvents()

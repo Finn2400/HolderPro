@@ -19,6 +19,8 @@ All notable changes to HolderPro are documented here. The format follows
 - A legal-review brief and exact GitHub Releases and PyPI setup guide.
 - Visible world-axis pose rings with hover/drag feedback, model-direct
   camera-relative tumbling, and background-only camera orbiting.
+- A dedicated vertical Height scrubber beside the 3D view for directly raising
+  and lowering the printable model.
 - A labelled build plate with distinct 10 mm, 50 mm, and perimeter lines that
   automatically switch between white and black for background contrast.
 

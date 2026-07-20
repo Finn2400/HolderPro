@@ -457,7 +457,8 @@ if QtWidgets is not None:
                     PAINT_MODE_POSE,
                     "Drag the red X, green Y, or blue Z ring for one-axis rotation; "
                     "drag the model for free rotation; drag empty space to orbit the "
-                    "view; Option/Alt-drag or scroll changes height.",
+                    "view; drag the amber Height bar, Option/Alt-drag, or scroll to "
+                    "raise and lower the model.",
                 ),
                 (
                     "Paint support",
@@ -518,8 +519,8 @@ if QtWidgets is not None:
 
             self.pose_help_label = QtWidgets.QLabel(
                 "Pose: drag red X / green Y / blue Z for one axis  •  drag the "
-                "model to tumble  •  drag empty space to orbit  •  Option/Alt-drag "
-                "or scroll for height"
+                "model to tumble  •  drag empty space to orbit  •  drag the amber "
+                "Height bar up/down"
             )
             self.pose_help_label.setObjectName("poseHelp")
             self.pose_help_label.setWordWrap(True)
@@ -843,7 +844,7 @@ if QtWidgets is not None:
             if mode == PAINT_MODE_POSE:
                 self.surface_info_label.setText(
                     "Pose object — red X, green Y, and blue Z rings constrain one "
-                    "axis; drag the model to tumble; empty space orbits the view."
+                    "axis; the amber Height bar raises/lowers; empty space orbits."
                 )
             elif mode == PAINT_MODE_INSPECT:
                 self.surface_info_label.setText(

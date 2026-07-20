@@ -12,7 +12,7 @@ import trimesh
 
 try:  # Optional GUI dependencies; CLI imports must remain headless-safe.
     import vtkmodules.vtkRenderingOpenGL2  # noqa: F401 - registers OpenGL backend
-    from PySide6 import QtCore, QtWidgets
+    from PySide6 import QtCore, QtGui, QtWidgets
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from vtkmodules.util.numpy_support import (
         numpy_to_vtk,
@@ -49,7 +49,7 @@ try:  # Optional GUI dependencies; CLI imports must remain headless-safe.
         vtkRenderer,
     )
 except ImportError as exc:  # pragma: no cover - environment dependent
-    QtCore = QtWidgets = None  # type: ignore[assignment]
+    QtCore = QtGui = QtWidgets = None  # type: ignore[assignment]
     _VTK_IMPORT_ERROR: ImportError | None = exc
 else:
     _VTK_IMPORT_ERROR = None
@@ -519,6 +519,182 @@ def load_support_preview_mesh(path: str | Path) -> trimesh.Trimesh:
 
 if QtWidgets is not None:
 
+    class _PoseHeightScrubber(QtWidgets.QWidget):
+        """A visible relative-drag control for printable model height."""
+
+        heightDragged = QtCore.Signal(float)
+        dragFinished = QtCore.Signal()
+
+        def __init__(self, parent: Any | None = None) -> None:
+            super().__init__(parent)
+            self._height_mm = 25.0
+            self._dragging = False
+            self._hovered = False
+            self._last_y: float | None = None
+            self._thumb_y: float | None = None
+            self.setFixedWidth(78)
+            self.setMinimumHeight(220)
+            self.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Fixed,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            self.setAccessibleName("Model height drag control")
+            self.setToolTip(
+                "Drag upward to raise the printable model or downward to lower it. "
+                "The numeric Bottom height field remains available for exact entry."
+            )
+            self.setEnabled(False)
+            self.hide()
+
+        def set_height(self, height_mm: float) -> None:
+            height_mm = float(height_mm)
+            if height_mm != self._height_mm:
+                self._height_mm = height_mm
+                self.update()
+
+        def cancel_drag(self) -> None:
+            self._dragging = False
+            self._last_y = None
+            self._thumb_y = None
+            self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            self.clearFocus()
+            self.update()
+
+        def mousePressEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            if event.button() != QtCore.Qt.MouseButton.LeftButton:
+                event.ignore()
+                return
+            self._dragging = True
+            self._last_y = float(event.position().y())
+            self._thumb_y = self._last_y
+            self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+            self.update()
+            event.accept()
+
+        def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            if not self._dragging or self._last_y is None:
+                event.ignore()
+                return
+            current_y = float(event.position().y())
+            delta = current_y - self._last_y
+            self._last_y = current_y
+            self._thumb_y = current_y
+            if delta != 0.0:
+                self.heightDragged.emit(delta)
+            self.update()
+            event.accept()
+
+        def mouseReleaseEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            if (
+                event.button() != QtCore.Qt.MouseButton.LeftButton
+                or not self._dragging
+            ):
+                event.ignore()
+                return
+            self.cancel_drag()
+            self.dragFinished.emit()
+            event.accept()
+
+        def enterEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            self._hovered = True
+            self.update()
+            super().enterEvent(event)
+
+        def leaveEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            self._hovered = False
+            self.update()
+            super().leaveEvent(event)
+
+        def paintEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+            del event
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+            panel = QtCore.QRectF(self.rect()).adjusted(5.0, 5.0, -5.0, -5.0)
+            border = "#ffcf5a" if self._dragging else (
+                "#e6a83d" if self._hovered else "#59636d"
+            )
+            painter.setPen(QtGui.QPen(QtGui.QColor(border), 1.5))
+            painter.setBrush(QtGui.QColor("#20262d"))
+            painter.drawRoundedRect(panel, 8.0, 8.0)
+
+            center_x = float(self.width()) * 0.5
+            track_top = 39.0
+            track_bottom = max(track_top + 32.0, float(self.height()) - 78.0)
+            accent = QtGui.QColor("#ffb23f")
+            painter.setPen(
+                QtGui.QPen(
+                    accent,
+                    4.0,
+                    QtCore.Qt.PenStyle.SolidLine,
+                    QtCore.Qt.PenCapStyle.RoundCap,
+                )
+            )
+            painter.drawLine(
+                QtCore.QPointF(center_x, track_top),
+                QtCore.QPointF(center_x, track_bottom),
+            )
+
+            arrow_width = 8.0
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(accent)
+            painter.drawPolygon(
+                QtGui.QPolygonF(
+                    (
+                        QtCore.QPointF(center_x, track_top - 10.0),
+                        QtCore.QPointF(center_x - arrow_width, track_top + 2.0),
+                        QtCore.QPointF(center_x + arrow_width, track_top + 2.0),
+                    )
+                )
+            )
+            painter.drawPolygon(
+                QtGui.QPolygonF(
+                    (
+                        QtCore.QPointF(center_x, track_bottom + 10.0),
+                        QtCore.QPointF(center_x - arrow_width, track_bottom - 2.0),
+                        QtCore.QPointF(center_x + arrow_width, track_bottom - 2.0),
+                    )
+                )
+            )
+
+            thumb_y = (
+                float(np.clip(self._thumb_y, track_top, track_bottom))
+                if self._thumb_y is not None
+                else (track_top + track_bottom) * 0.5
+            )
+            painter.setPen(QtGui.QPen(QtGui.QColor("#fff3cc"), 2.0))
+            painter.setBrush(
+                QtGui.QColor("#ffd166" if self._dragging else "#ffb23f")
+            )
+            painter.drawEllipse(QtCore.QPointF(center_x, thumb_y), 9.0, 9.0)
+
+            painter.setPen(QtGui.QColor("#f5f7f9"))
+            heading_font = painter.font()
+            heading_font.setBold(True)
+            heading_font.setPointSize(9)
+            painter.setFont(heading_font)
+            painter.drawText(
+                QtCore.QRectF(6.0, 10.0, float(self.width()) - 12.0, 20.0),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                "HEIGHT",
+            )
+            value_font = painter.font()
+            value_font.setBold(False)
+            value_font.setPointSize(8)
+            painter.setFont(value_font)
+            painter.drawText(
+                QtCore.QRectF(
+                    5.0,
+                    float(self.height()) - 59.0,
+                    float(self.width()) - 10.0,
+                    49.0,
+                ),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                f"{self._height_mm:.2f}\nmm",
+            )
+            painter.end()
+
     class _StableQVTKRenderWindowInteractor(QVTKRenderWindowInteractor):
         """Coalesce Qt paint events that otherwise recurse on macOS/PySide."""
 
@@ -782,12 +958,20 @@ if QtWidgets is not None:
             self._pose_drag_center: np.ndarray | None = None
             self._pose_gizmo_center = np.zeros(3, dtype=float)
 
-            layout = QtWidgets.QVBoxLayout(self)
+            layout = QtWidgets.QHBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
             self.vtk_widget = _StableQVTKRenderWindowInteractor(self)
             self.vtk_widget.set_paint_preview(self)
             self.vtk_widget.setMinimumSize(540, 460)
-            layout.addWidget(self.vtk_widget)
+            layout.addWidget(self.vtk_widget, 1)
+            self.height_scrubber = _PoseHeightScrubber(self)
+            self.height_scrubber.heightDragged.connect(
+                self._drag_height_scrubber
+            )
+            self.height_scrubber.dragFinished.connect(
+                self.finalize_pose_analysis
+            )
+            layout.addWidget(self.height_scrubber)
 
             self.renderer = vtkRenderer()
             self.renderer.SetBackground(0.055, 0.064, 0.075)
@@ -1047,6 +1231,10 @@ if QtWidgets is not None:
                 actor.SetPickable(visible)
             for label in self._pose_handle_labels.values():
                 label.SetVisibility(visible)
+            self.height_scrubber.setVisible(visible)
+            self.height_scrubber.setEnabled(visible)
+            if not visible:
+                self.height_scrubber.cancel_drag()
 
         def _refresh_pose_handle_styles(self) -> None:
             for axis, actor in self._pose_handle_actors.items():
@@ -1318,6 +1506,7 @@ if QtWidgets is not None:
             ):
                 actor.SetVisibility(True)
             self._update_pose_gizmo(posed_bounds)
+            self.height_scrubber.set_height(self._pose[3])
             if update_analysis:
                 display_faces = np.asarray(self._display_mesh.faces, dtype=np.int64)
                 centers = vertices[display_faces].mean(axis=1)
@@ -1490,6 +1679,12 @@ if QtWidgets is not None:
 
             if self._mesh is not None and self._analysis_pose != self._pose:
                 self.set_pose(*self._pose, update_analysis=True)
+
+        def _drag_height_scrubber(self, vertical_pixels: float) -> None:
+            """Move the printable model from the visible height control."""
+
+            if self.paint_mode == PAINT_MODE_POSE and self._mesh is not None:
+                self.translate_pose_z_drag(vertical_pixels, interactive=True)
 
         def end_pose_drag(self) -> None:
             self.finalize_pose_analysis()
