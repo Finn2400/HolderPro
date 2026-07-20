@@ -23,9 +23,10 @@ def exact_constraints(path: Path) -> dict[str, str]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        if line.count("==") != 1:
+        requirement = line.partition(";")[0].strip()
+        if requirement.count("==") != 1:
             raise RuntimeError(f"release constraint is not exact: {line}")
-        name, version = line.split("==", 1)
+        name, version = requirement.split("==", 1)
         key = canonical_name(name.strip())
         if not key or not version or key in result:
             raise RuntimeError(f"invalid duplicate release constraint: {line}")

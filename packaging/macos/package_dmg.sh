@@ -24,11 +24,10 @@ fi
 python "$ROOT/packaging/scripts/verify_macos_bundle.py" "$APP" \
     --version "$HOLDERPRO_VERSION"
 
-codesign --force --deep --options runtime --timestamp \
-    --entitlements "$ROOT/packaging/macos/entitlements.plist" \
-    --sign "$HOLDERPRO_APPLE_SIGNING_IDENTITY" "$APP"
-# Deep signing mutates nested Mach-O files. Refresh the digest manifest, then
-# seal that final manifest with a non-deep outer application signature.
+python "$ROOT/packaging/scripts/sign_macos_nested_code.py" "$APP" \
+    --identity "$HOLDERPRO_APPLE_SIGNING_IDENTITY"
+# Nested signing mutates Mach-O files. Refresh the digest manifest, then seal
+# that final manifest with the outer application signature.
 python "$ROOT/packaging/scripts/refresh_desktop_native_manifest.py" "$APP" \
     --expected-version "$HOLDERPRO_VERSION" \
     --expected-target "$HOLDERPRO_TARGET" \
@@ -40,7 +39,15 @@ python "$ROOT/packaging/scripts/verify_desktop_bundle.py" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/holderpro-dmg.XXXXXX")
-trap 'rm -rf "$STAGE"' EXIT INT TERM
+MOUNT=$(mktemp -d "${TMPDIR:-/tmp}/holderpro-mounted-dmg.XXXXXX")
+ATTACHED=false
+cleanup() {
+    if [ "$ATTACHED" = true ]; then
+        hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$STAGE" "$MOUNT"
+}
+trap cleanup EXIT INT TERM
 cp -R "$APP" "$STAGE/HolderPro.app"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -fs HFS+ -volname "HolderPro $VERSION" \
@@ -50,3 +57,9 @@ xcrun notarytool submit "$OUTPUT" --keychain-profile "$HOLDERPRO_NOTARY_PROFILE"
 xcrun stapler staple "$OUTPUT"
 xcrun stapler validate "$OUTPUT"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$OUTPUT"
+hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$OUTPUT" >/dev/null
+ATTACHED=true
+codesign --verify --deep --strict --verbose=2 "$MOUNT/HolderPro.app"
+spctl --assess --type execute --verbose=2 "$MOUNT/HolderPro.app"
+hdiutil detach "$MOUNT" >/dev/null
+ATTACHED=false

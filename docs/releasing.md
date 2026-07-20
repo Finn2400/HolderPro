@@ -4,14 +4,118 @@ HolderPro releases are build-once, test-exactly-those-files promotions.
 
 ## One-time configuration
 
-- Enable GitHub Actions and artifact attestations.
-- Configure the `release` environment for draft creation.
-- Configure the `pypi` environment and PyPI Trusted Publisher.
-- Add Apple Developer ID signing/notarization secrets documented in the release
-  workflow.
-- Configure Azure Artifact Signing OIDC and repository variables for the
-  signing account and certificate profile.
-- Protect `main` and both environments with required reviewers.
+Choose the public legal publisher before buying signing services. Apple and
+Windows show that verified individual or company identity to users, and a later
+change creates a different publisher identity. Do not put passwords,
+certificates, private keys, or identity-review documents in the repository.
+
+Enable GitHub Actions and artifact attestations, protect `main`, and create two
+environments with required reviewers:
+
+- `release`: allow deployments only from `main` and tags matching `v*`;
+- `pypi`: allow deployments only from `main`.
+
+Prefer a second trusted reviewer. A sole reviewer who may approve their own
+deployment is an intentional bootstrap configuration, not two-person control.
+
+### Apple Developer ID and notarization
+
+Enroll the selected individual or legal organization in the
+[Apple Developer Program](https://developer.apple.com/programs/enroll/). The
+Account Holder creates a **Developer ID Application** certificate and exports
+the certificate plus its private key as a password-protected `.p12`. HolderPro
+does not need a Developer ID Installer certificate because it ships a DMG, not
+a PKG. Create a separate Apple app-specific password for notarization.
+
+Configure these values on the `release` environment:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `APPLE_CERTIFICATE_P12` | Base64 text of the exported `.p12` |
+| Secret | `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password |
+| Variable | `HOLDERPRO_APPLE_SIGNING_IDENTITY` | `Developer ID Application: LEGAL NAME (TEAMID)` |
+| Secret | `APPLE_NOTARY_ID` | Apple Account email |
+| Secret | `APPLE_NOTARY_TEAM_ID` | 10-character Apple Team ID |
+| Secret | `APPLE_NOTARY_PASSWORD` | App-specific password |
+
+The workflow imports the certificate into a temporary keychain, signs nested
+Mach-O payloads inside-out, applies hardened runtime and secure timestamps,
+notarizes and staples the DMG, and asks Gatekeeper to assess both the DMG and
+the mounted application. Enter secrets directly in GitHub. For example, this
+keeps the binary certificate out of shell arguments:
+
+```console
+base64 < DeveloperIDApplication.p12 | gh secret set APPLE_CERTIFICATE_P12 --env release
+gh secret set APPLE_CERTIFICATE_PASSWORD --env release
+gh secret set APPLE_NOTARY_ID --env release
+gh secret set APPLE_NOTARY_TEAM_ID --env release
+gh secret set APPLE_NOTARY_PASSWORD --env release
+gh variable set HOLDERPRO_APPLE_SIGNING_IDENTITY --env release
+```
+
+### Windows Artifact Signing
+
+Create an Azure subscription and Microsoft Entra tenant for the same public
+publisher. Register `Microsoft.CodeSigning`, create an Artifact Signing account,
+complete public identity validation, and create a real `PublicTrust` certificate
+profile. `PublicTrustTest` is not acceptable for a release. Give a dedicated
+Entra application the **Artifact Signing Certificate Profile Signer** role at
+the certificate-profile scope.
+
+Create a federated credential for GitHub Actions with exactly these claims:
+
+```text
+Issuer:   https://token.actions.githubusercontent.com
+Audience: api://AzureADTokenExchange
+Subject:  repo:Finn2400@66322386/HolderPro@1306001188:environment:release
+```
+
+The numeric owner and repository IDs are required by GitHub's immutable OIDC
+identity format for this repository. Do not substitute the legacy mutable
+`repo:Finn2400/HolderPro:environment:release` subject.
+
+Configure these values on the `release` environment:
+
+| Kind | Name |
+|---|---|
+| Secret | `AZURE_CLIENT_ID` |
+| Secret | `AZURE_TENANT_ID` |
+| Secret | `AZURE_SUBSCRIPTION_ID` |
+| Variable | `AZURE_ARTIFACT_SIGNING_ENDPOINT` |
+| Variable | `AZURE_ARTIFACT_SIGNING_ACCOUNT` |
+| Variable | `AZURE_ARTIFACT_SIGNING_PROFILE` |
+
+### PyPI Trusted Publishing
+
+While signed into PyPI, add a pending Trusted Publisher with these exact fields:
+
+```text
+PyPI project name: holderpro
+GitHub owner: Finn2400
+GitHub repository: HolderPro
+Workflow filename: release-publish.yml
+Environment name: pypi
+```
+
+No PyPI API token or GitHub secret is used. The OIDC-enabled `pypi` job contains
+only artifact download and the pinned official publish action; all shell and
+corresponding-source checks happen in a predecessor without an identity token.
+A pending publisher does not reserve the package name, so configure it before
+the first release.
+
+### Legal release flags
+
+Keep both `release` environment variables false until the respective written,
+independent reviews are actually complete:
+
+```text
+HOLDERPRO_LICENSE_REVIEW_APPROVED=false
+HOLDERPRO_TRADEMARK_REVIEW_APPROVED=false
+```
+
+Only after recording the review privately should a release manager change the
+corresponding value to `true`. Never use the variables as substitutes for the
+underlying reports.
 
 ## Human release gates
 
@@ -19,7 +123,8 @@ No first public binary may be published until an independent license review is
 recorded. No stable `1.0`, final logo, signing identity, or domain decision may
 be published until a professional trademark knockout search is recorded. These
 are human approvals; CI checks an explicit environment approval but cannot
-perform legal work.
+perform legal work. Start the reviewer handoff with the
+[legal review brief](legal-review-brief.md).
 
 Restricted app stores remain out of scope pending separate AGPL analysis.
 

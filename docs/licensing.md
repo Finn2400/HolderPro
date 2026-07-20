@@ -67,4 +67,5 @@ Before adopting a logo, signing identity, domain strategy, or stable `1.0`
 branding, commission a professional trademark knockout search for HolderPro in
 the relevant countries and software/manufacturing classes. Record the written
 disposition in the private release records. A web search or package-index check
-does not satisfy this gate.
+does not satisfy this gate. The technical evidence and preliminary screening
+are organized in [the legal review brief](legal-review-brief.md).

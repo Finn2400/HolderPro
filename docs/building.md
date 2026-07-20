@@ -18,7 +18,10 @@ pytest
 On Windows, activate with `.venv\Scripts\Activate.ps1`.
 
 Core installs contain NumPy, trimesh, manifold3d, and Shapely. The `gui` extra
-adds PySide6-Essentials and VTK. It intentionally does not install the PySide6
+adds PySide6-Essentials 6.7–6.9 and VTK. The Qt for Python 6.10+ macOS wheels
+tested for v0.1 declare a deployment target newer than HolderPro's macOS 13
+floor, so they remain excluded until upstream restores that contract. HolderPro
+intentionally does not install the PySide6
 Addons metapackage, SciPy, NetworkX, lxml, PyVista, PyVistaQt, qtpy, Rtree, or
 fast-simplification. HolderPro's bounded 3MF Core/Production reader uses only
 the standard library and NumPy, avoiding trimesh's NetworkX/lxml import path.

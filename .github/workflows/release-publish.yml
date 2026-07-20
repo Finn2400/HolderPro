@@ -104,12 +104,10 @@ jobs:
           if [ "${{ needs.verify.outputs.prerelease }}" = true ]; then args+=(--prerelease=true); else args+=(--prerelease=false --latest); fi
           gh release edit "${{ inputs.tag }}" "${args[@]}" --repo "$GITHUB_REPOSITORY"
 
-  pypi:
+  verify-public-source:
     needs: [verify, publish-release]
     runs-on: ubuntu-22.04
-    environment: pypi
     permissions:
-      id-token: write
       contents: read
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -127,4 +125,16 @@ jobs:
           source_name="holderpro-${{ needs.verify.outputs.display }}-corresponding-source.tar.zst"
           gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --pattern "$source_name" --dir "$RUNNER_TEMP/public-source"
           test -s "$RUNNER_TEMP/public-source/$source_name"
+
+  pypi:
+    needs: verify-public-source
+    runs-on: ubuntu-22.04
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: pypi-wheels-${{ inputs.tag }}
+          path: dist
       - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1

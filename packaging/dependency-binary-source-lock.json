@@ -3,23 +3,23 @@
   "components": [
     {
       "name": "PySide6-Essentials",
-      "version": "6.11.1",
-      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.1-src/pyside-setup-everywhere-src-6.11.1.tar.xz",
-      "source_sha256": "6ffd9835bb0dd2c56f061d62f1616bb1707cfc0202b80e3165d6be087f3965e2",
+      "version": "6.9.3",
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.9.3-src/pyside-setup-everywhere-src-6.9.3.tar.xz",
+      "source_sha256": "7cd2d5abb98f2e6f442b0e41f5fcf930e7312ae4b17f681316b1adc7b63bb172",
       "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
     },
     {
       "name": "shiboken6",
-      "version": "6.11.1",
-      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.1-src/pyside-setup-everywhere-src-6.11.1.tar.xz",
-      "source_sha256": "6ffd9835bb0dd2c56f061d62f1616bb1707cfc0202b80e3165d6be087f3965e2",
+      "version": "6.9.3",
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.9.3-src/pyside-setup-everywhere-src-6.9.3.tar.xz",
+      "source_sha256": "7cd2d5abb98f2e6f442b0e41f5fcf930e7312ae4b17f681316b1adc7b63bb172",
       "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
     },
     {
       "name": "Qt",
-      "version": "6.11.1",
-      "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/single/qt-everywhere-src-6.11.1.tar.xz",
-      "source_sha256": "252acef8c5ae68074d91cadba2ee4a83465051bbb970dd26e8f0daa0f3904e03",
+      "version": "6.9.3",
+      "source_url": "https://download.qt.io/official_releases/qt/6.9/6.9.3/single/qt-everywhere-src-6.9.3.tar.xz",
+      "source_sha256": "59d4fbf50d2524a9082f85d565f0197316cde89c26e97cfc6c157cb255b7ea18",
       "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
     },
     {
