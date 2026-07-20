@@ -14,8 +14,10 @@ sys.path.insert(0, str(PROJECT_PYTHON))
 from holderpro.surface_analysis import (  # noqa: E402
     PAINT_BLOCKER,
     PAINT_ENFORCER,
+    analyze_posed_surface,
     analyze_surface,
     mesh_fingerprint,
+    posed_geometry,
     surface_colors,
 )
 
@@ -47,6 +49,25 @@ def test_pose_rotation_updates_underside_classification() -> None:
         np.clip(mesh.face_normals[:, 2], 0.0, 1.0),
         atol=1e-6,
     )
+
+
+def test_precomputed_pose_analysis_matches_full_analysis() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=2, radius=3.0)
+    _vertices, centers, normals = posed_geometry(mesh, 17.0, -28.0, 41.0, 12.0)
+
+    direct = analyze_surface(
+        mesh,
+        rotation_x_deg=17.0,
+        rotation_y_deg=-28.0,
+        rotation_z_deg=41.0,
+        bottom_height_mm=12.0,
+    )
+    reused = analyze_posed_surface(mesh, centers, normals)
+
+    np.testing.assert_allclose(reused.downwardness, direct.downwardness)
+    np.testing.assert_allclose(reused.underside_angle_deg, direct.underside_angle_deg)
+    np.testing.assert_allclose(reused.relative_height, direct.relative_height)
+    np.testing.assert_allclose(reused.concavity, direct.concavity)
 
 
 def test_paint_colors_override_surface_heatmap() -> None:

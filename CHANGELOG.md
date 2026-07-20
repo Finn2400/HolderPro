@@ -17,6 +17,10 @@ All notable changes to HolderPro are documented here. The format follows
 - Permanent free-software governance, release-authenticity, privacy, and
   uninstalling policies.
 - A legal-review brief and exact GitHub Releases and PyPI setup guide.
+- Visible world-axis pose rings with hover/drag feedback, model-direct
+  camera-relative tumbling, and background-only camera orbiting.
+- A labelled build plate with distinct 10 mm, 50 mm, and perimeter lines that
+  automatically switch between white and black for background contrast.
 
 ### Changed
 
@@ -27,6 +31,9 @@ All notable changes to HolderPro are documented here. The format follows
 - The complete Python package is covered by the mypy release gate.
 - The official distribution is limited to the same four bundled-engine wheels
   on GitHub Releases and PyPI; GUI dependencies remain separately installable.
+- STL preview vertices are welded without changing source faces, retaining full
+  reference detail while making dense-model posing responsive and restoring
+  adjacency-based concavity highlighting.
 
 ### Fixed
 
@@ -54,6 +61,10 @@ All notable changes to HolderPro are documented here. The format follows
 - Protected-main tooling now validates annotated release tags before tagged
   code executes, and partial PyPI uploads resume only after exact wheel hashes
   are verified.
+- Dense preview inspection now reports the displayed face safely, and pose
+  heatmaps update once at drag/scroll completion instead of blocking each move.
+- macOS clean-wheel GUI release tests now use Qt's native Cocoa platform,
+  avoiding the QVTK crash caused by Qt's generic offscreen platform plugin.
 
 ### Removed
 

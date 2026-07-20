@@ -53,14 +53,14 @@ def rotation_matrix(x_deg: float, y_deg: float, z_deg: float) -> np.ndarray:
     return rz @ ry @ rx
 
 
-def posed_geometry(
+def posed_vertices(
     mesh: trimesh.Trimesh,
     x_deg: float,
     y_deg: float,
     z_deg: float,
     bottom_height_mm: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return posed vertices, face centers, and normals for the preview."""
+    """Return posed vertices, rotation, and source center without face work."""
 
     vertices = np.asarray(mesh.vertices, dtype=float)
     center = np.asarray(mesh.bounds, dtype=float).mean(axis=0)
@@ -75,14 +75,31 @@ def posed_geometry(
         )
     )
     posed_vertices += translation
+    return posed_vertices, rotation, center
+
+
+def posed_geometry(
+    mesh: trimesh.Trimesh,
+    x_deg: float,
+    y_deg: float,
+    z_deg: float,
+    bottom_height_mm: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return posed vertices, face centers, and normals for the preview."""
+
+    vertices, rotation, _center = posed_vertices(
+        mesh, x_deg, y_deg, z_deg, bottom_height_mm
+    )
 
     faces = np.asarray(mesh.faces, dtype=np.int64)
-    centers = posed_vertices[faces].mean(axis=1)
+    centers = vertices[faces].mean(axis=1)
     normals = np.asarray(mesh.face_normals, dtype=float) @ rotation.T
-    return posed_vertices, centers, normals
+    return vertices, centers, normals
 
 
-def _face_concavity(mesh: trimesh.Trimesh) -> np.ndarray:
+def face_concavity(mesh: trimesh.Trimesh) -> np.ndarray:
+    """Return the pose-independent local concavity score for each source face."""
+
     face_count = len(mesh.faces)
     score = np.zeros(face_count, dtype=np.float32)
     degree = np.zeros(face_count, dtype=np.float32)
@@ -122,6 +139,33 @@ def analyze_surface(
         rotation_z_deg,
         bottom_height_mm,
     )
+    return analyze_posed_surface(
+        mesh,
+        centers,
+        normals,
+        concavity=concavity,
+    )
+
+
+def analyze_posed_surface(
+    mesh: trimesh.Trimesh,
+    centers: np.ndarray,
+    normals: np.ndarray,
+    *,
+    concavity: np.ndarray | None = None,
+) -> SurfaceAnalysis:
+    """Measure surface metrics from already-computed printable-pose geometry."""
+
+    if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):
+        raise ValueError("surface analysis requires a non-empty triangle mesh")
+    centers = np.asarray(centers, dtype=float)
+    normals = np.asarray(normals, dtype=float)
+    expected_shape = (len(mesh.faces), 3)
+    if centers.shape != expected_shape or normals.shape != expected_shape:
+        raise ValueError("posed centers and normals must contain one row per face")
+    if not np.isfinite(centers).all() or not np.isfinite(normals).all():
+        raise ValueError("posed centers and normals must be finite")
+
     downwardness = np.clip(-normals[:, 2], 0.0, 1.0).astype(np.float32)
     underside_angle = np.degrees(
         np.arccos(np.clip(downwardness, 0.0, 1.0))
@@ -135,7 +179,7 @@ def analyze_surface(
         relative_height = np.zeros(len(z), dtype=np.float32)
 
     if concavity is None:
-        concavity = _face_concavity(mesh)
+        concavity = face_concavity(mesh)
     else:
         concavity = np.asarray(concavity, dtype=np.float32)
         if concavity.shape != (len(mesh.faces),):
@@ -206,9 +250,12 @@ __all__ = [
     "PAINT_ENFORCER",
     "PAINT_NONE",
     "SurfaceAnalysis",
+    "analyze_posed_surface",
     "analyze_surface",
+    "face_concavity",
     "mesh_fingerprint",
     "posed_geometry",
+    "posed_vertices",
     "rotation_matrix",
     "surface_colors",
 ]

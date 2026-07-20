@@ -376,12 +376,16 @@ jobs:
         include:
           - target: macos-arm64
             runner: macos-15
+            qt_platform: cocoa
           - target: macos-x86_64
             runner: macos-15-intel
+            qt_platform: cocoa
           - target: windows-x86_64
             runner: windows-2022
+            qt_platform: offscreen
           - target: linux-x86_64
             runner: ubuntu-22.04
+            qt_platform: offscreen
     runs-on: ${{ matrix.runner }}
     env:
       # The artifact-only job has no repository checkout and intentionally lets
@@ -400,7 +404,9 @@ jobs:
       - name: Install wheel with GUI dependencies and smoke-test the public commands
         shell: bash
         env:
-          QT_QPA_PLATFORM: offscreen
+          # VTK's QVTK interactor crashes with Qt's offscreen plugin on macOS;
+          # hosted macOS runners have a native WindowServer/Cocoa session.
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             python -c 'import ctypes; ctypes.WinDLL("MSVCP140.dll")'
@@ -449,7 +455,12 @@ jobs:
           from PySide6.QtWidgets import QApplication
 
           from holderpro.mesh_io import load_reference_mesh
-          from holderpro.preview import ModelPreviewWidget, load_support_preview_mesh
+          from holderpro.preview import (
+              PAINT_MODE_ENFORCER,
+              PAINT_MODE_POSE,
+              ModelPreviewWidget,
+              load_support_preview_mesh,
+          )
 
           reference_path = Path(os.environ["REFERENCE"])
           support_path = Path(os.environ["SUPPORTS"])
@@ -458,7 +469,10 @@ jobs:
           application = QApplication.instance() or QApplication([])
           preview = ModelPreviewWidget()
           preview.resize(640, 480)
-          preview.load_mesh(load_reference_mesh(reference_path))
+          reference = load_reference_mesh(reference_path)
+          preview.load_mesh(reference)
+          assert len(preview._display_mesh.faces) == len(reference.faces)
+          assert len(preview._display_mesh.vertices) <= len(reference.vertices)
           preview.load_support_mesh(load_support_preview_mesh(support_path))
           preview.show()
           application.processEvents()
@@ -468,6 +482,34 @@ jobs:
           assert preview._support_actor.GetVisibility()
           assert preview._support_polydata.GetNumberOfCells() == len(support.faces)
           assert render_window.SupportsOpenGL()
+          assert all(
+              tuple(actor.GetProperty().GetColor()) == (1.0, 1.0, 1.0)
+              for actor in preview._bed_actors
+          )
+          assert [actor.GetProperty().GetOpacity() for actor in preview._bed_actors] == [
+              0.3,
+              0.62,
+              0.95,
+          ]
+          assert all(not actor.GetProperty().GetLighting() for actor in preview._bed_actors)
+          preview.set_background_colors((0.95, 0.96, 0.98))
+          assert all(
+              tuple(actor.GetProperty().GetColor()) == (0.0, 0.0, 0.0)
+              for actor in preview._bed_actors
+          )
+          preview.set_paint_mode(PAINT_MODE_POSE)
+          assert all(actor.GetVisibility() for actor in preview._pose_handle_actors.values())
+          initial_pose = preview._pose
+          preview.rotate_pose_axis("z", 12.0, interactive=True)
+          assert preview._pose != initial_pose
+          assert preview._analysis_pose != preview._pose
+          preview.end_pose_drag()
+          assert preview._analysis_pose == preview._pose
+          preview.set_paint_mode(PAINT_MODE_ENFORCER)
+          assert not any(
+              actor.GetVisibility() for actor in preview._pose_handle_actors.values()
+          )
+          assert preview.begin_pose_drag(0, 0) is None
           preview.close()
           application.processEvents()
           PY

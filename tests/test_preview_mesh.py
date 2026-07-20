@@ -12,11 +12,17 @@ sys.path.insert(0, str(PROJECT_PYTHON))
 
 from holderpro.preview import (  # noqa: E402
     adjusted_bottom_height,
+    bed_grid_segments,
+    contrasting_grid_color,
     decimate_mesh_for_preview,
     load_support_preview_mesh,
+    merged_topology_copy,
     point_triangle_distance_squared,
+    rotate_euler_about_world_axis,
+    signed_axis_angle_degrees,
     triangle_faces_within_sphere,
 )
+from holderpro.surface_analysis import rotation_matrix  # noqa: E402
 from holderpro.solidify import export_mesh_stl  # noqa: E402
 
 
@@ -53,6 +59,76 @@ def test_support_preview_displays_prusa_valid_tangent_shell_fallback(
 def test_upward_pose_drag_raises_model_and_clamps_to_bed() -> None:
     assert adjusted_bottom_height(25.0, -20.0) == pytest.approx(28.0)
     assert adjusted_bottom_height(2.0, 100.0) == pytest.approx(0.01)
+
+
+def test_axis_ring_drag_has_stable_signed_rotation() -> None:
+    assert signed_axis_angle_degrees(
+        np.asarray((0.0, 0.0, 1.0)),
+        np.asarray((1.0, 0.0, 0.0)),
+        np.asarray((0.0, 1.0, 0.0)),
+    ) == pytest.approx(90.0)
+    assert signed_axis_angle_degrees(
+        np.asarray((0.0, 0.0, 2.0)),
+        np.asarray((0.0, 3.0, 0.0)),
+        np.asarray((4.0, 0.0, 0.0)),
+    ) == pytest.approx(-90.0)
+
+
+def test_axis_ring_composes_the_axis_shown_in_world_space() -> None:
+    initial = (30.0, 40.0, 50.0)
+    result = rotate_euler_about_world_axis(
+        *initial,
+        np.asarray((1.0, 0.0, 0.0)),
+        12.0,
+    )
+
+    expected = rotation_matrix(12.0, 0.0, 0.0) @ rotation_matrix(*initial)
+    assert rotation_matrix(*result) == pytest.approx(expected, abs=1e-10)
+
+
+def test_preview_welds_stl_triangle_soup_without_changing_faces() -> None:
+    box = trimesh.creation.box(extents=(4.0, 5.0, 6.0))
+    triangle_vertices = np.asarray(box.triangles).reshape((-1, 3))
+    soup = trimesh.Trimesh(
+        vertices=triangle_vertices,
+        faces=np.arange(len(triangle_vertices)).reshape((-1, 3)),
+        process=False,
+    )
+
+    display = merged_topology_copy(soup)
+
+    assert len(display.faces) == len(soup.faces)
+    assert len(display.vertices) == 8
+    assert len(display.face_adjacency) > 0
+    np.testing.assert_allclose(display.triangles, soup.triangles)
+
+
+def test_build_plate_grid_uses_maximum_background_contrast() -> None:
+    assert contrasting_grid_color((0.055, 0.064, 0.075), (0.12, 0.14, 0.17)) == (
+        1.0,
+        1.0,
+        1.0,
+    )
+    assert contrasting_grid_color((0.88, 0.90, 0.94), (1.0, 1.0, 1.0)) == (
+        0.0,
+        0.0,
+        0.0,
+    )
+
+
+def test_build_plate_grid_has_disjoint_minor_major_and_border_lines() -> None:
+    minor, major, border = bed_grid_segments()
+
+    assert minor.shape == (32, 2, 3)
+    assert major.shape == (6, 2, 3)
+    assert border.shape == (4, 2, 3)
+    combined = np.concatenate((minor, major, border))
+    assert np.all(combined[:, :, 2] == 0.0)
+    assert np.max(np.abs(combined[:, :, :2])) == pytest.approx(100.0)
+    canonical = {
+        tuple(np.round(segment, 8).ravel()) for segment in combined
+    }
+    assert len(canonical) == len(combined)
 
 
 def test_brush_distance_uses_triangle_surface_not_triangle_center() -> None:
