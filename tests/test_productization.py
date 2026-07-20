@@ -504,7 +504,12 @@ def test_pypi_oidc_job_contains_no_shell_or_repository_token() -> None:
     workflow = (PROJECT / ".github/workflows/release-publish.yml").read_text(
         encoding="utf-8"
     )
-    verification, publication = workflow.split("\n  pypi:\n", maxsplit=1)
+    verification, publication_and_postflight = workflow.split(
+        "\n  pypi:\n", maxsplit=1
+    )
+    publication, postflight = publication_and_postflight.split(
+        "\n  verify-pypi:\n", maxsplit=1
+    )
 
     assert "verify-public-source:" in verification
     assert "Require public version-matched corresponding source" in verification
@@ -513,6 +518,8 @@ def test_pypi_oidc_job_contains_no_shell_or_repository_token() -> None:
     assert "id-token: write" in publication
     assert "actions/download-artifact@" in publication
     assert "pypa/gh-action-pypi-publish@" in publication
+    assert "skip-existing: true" in publication
+    assert "--require-complete" in postflight
 
 
 def test_release_promotion_never_interpolates_raw_tag_input_into_shell() -> None:
@@ -523,6 +530,26 @@ def test_release_promotion_never_interpolates_raw_tag_input_into_shell() -> None
     assert workflow.count("${{ inputs.tag }}") == 1
     assert "RELEASE_TAG: ${{ inputs.tag }}" in workflow
     assert "pypi-wheels-${{ inputs.tag }}" not in workflow
+
+
+def test_release_workflows_validate_tags_with_protected_main_before_checkout() -> None:
+    build = (PROJECT / ".github/workflows/release-build.yml").read_text(
+        encoding="utf-8"
+    )
+    publish = (PROJECT / ".github/workflows/release-publish.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "push:\n    tags:" not in build
+    for workflow in (build, publish):
+        assert "if: github.ref == 'refs/heads/main'" in workflow
+        assert workflow.index("ref: main") < workflow.index(
+            'release_version.py "$RELEASE_TAG"'
+        )
+        assert workflow.index('release_version.py "$RELEASE_TAG"') < workflow.index(
+            'git checkout --detach "$'
+        )
+    assert "refs/(tags/.+|heads/main)" not in publish
 
 
 def test_release_constraints_pin_the_build_dependency_closure() -> None:
@@ -566,3 +593,6 @@ def test_release_automation_is_github_and_pypi_wheel_only() -> None:
         assert marker not in workflows
     assert "pypa/gh-action-pypi-publish" in workflows
     assert "gh release create" in workflows
+    assert "ModelPreviewWidget" in workflows
+    assert "load_support_preview_mesh" in workflows
+    assert "render_window.SupportsOpenGL()" in workflows

@@ -34,6 +34,7 @@ required_paths = [
   "packaging/scripts/verify_native_stage.py",
   "packaging/scripts/verify_corresponding_source.py",
   "packaging/scripts/verify_platform_wheel.py",
+  "packaging/scripts/verify_pypi_release.py",
   "packaging/scripts/verify_release_assets.py",
   "packaging/scripts/verify_release_provenance.py",
   "packaging/scripts/write_build_environment.py",

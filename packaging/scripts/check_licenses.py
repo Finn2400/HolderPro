@@ -107,6 +107,17 @@ def main() -> int:
                 errors.append(f"dependency archive is not HTTPS: {source_url}")
 
     native_requirements = json.loads(manifests[1].read_text(encoding="utf-8"))
+    notices_text = (root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    notice_licenses: dict[str, str] = {}
+    for line in notices_text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[0] in {"Component", "---"}:
+            continue
+        if cells[0] in notice_licenses:
+            errors.append(f"THIRD_PARTY_NOTICES.md repeats {cells[0]}")
+        notice_licenses[cells[0]] = cells[2]
     vendored = native_requirements.get("vendored_components")
     if not isinstance(vendored, list) or not vendored:
         errors.append("native dependency manifest has no structured vendored components")
@@ -144,6 +155,11 @@ def main() -> int:
                 errors.append(
                     f"vendored dependency {name} has unreviewed license expression "
                     f"{item.get('license')!r}"
+                )
+            if notice_licenses.get(str(name)) != item.get("license"):
+                errors.append(
+                    f"THIRD_PARTY_NOTICES.md license does not match the reviewed "
+                    f"vendored dependency record for {name}"
                 )
             for field in ("source_path",):
                 candidate = Path(str(item.get(field, "")))

@@ -51,6 +51,10 @@ All notable changes to HolderPro are documented here. The format follows
   header definitions explicitly instead of relying on upstream directory scope.
 - PyPI publication grants OIDC only to the two-action publish job; source and
   artifact checks run before that credential is available.
+- Protected-main tooling now validates annotated release tags before tagged
+  code executes, and partial PyPI uploads resume only after exact wheel hashes
+  are verified.
+
 ### Removed
 
 - The retired independent approximation and its legacy dependency stack.

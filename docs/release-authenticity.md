@@ -28,8 +28,11 @@ Every release provides:
 
 PyPI publication uses Trusted Publishing with short-lived GitHub OIDC
 credentials. No PyPI API token is stored in the repository or release
-environment. Checksums and attestations prove content integrity and build
-origin; they are not Apple notarization or Windows Authenticode signatures.
+environment. Before a resumed publication, HolderPro compares every file
+already present for that version on PyPI with the tested wheel's filename,
+size, and SHA-256; after upload it requires the complete four-wheel set.
+Checksums and attestations prove content integrity and build origin; they are
+not Apple notarization or Windows Authenticode signatures.
 
 Example verification after downloading a release asset:
 
@@ -43,10 +46,12 @@ Use `shasum -a 256 -c SHA256SUMS` on macOS when `sha256sum` is unavailable.
 ## Release authority
 
 During the single-maintainer bootstrap period, [@Finn2400](https://github.com/Finn2400)
-is the committer, reviewer, and release approver. Every release is triggered
-from an annotated tag, requires manual environment approval, and promotes the
-already-tested draft artifacts without rebuilding. Multi-factor authentication
-is required for accounts with GitHub or PyPI publication authority.
+is the committer, reviewer, and release approver. Every release is built from
+an annotated tag by a manually dispatched protected-main workflow, requires
+manual environment approval, and promotes the already-tested draft artifacts
+without rebuilding. Tag pushes alone cannot execute release jobs. Multi-factor
+authentication is required for accounts with GitHub or PyPI publication
+authority.
 
 See [the privacy policy](privacy.md) for HolderPro's local-only behavior and
 [the release process](releasing.md) for the complete gates.

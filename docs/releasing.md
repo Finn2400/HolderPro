@@ -17,7 +17,7 @@ The GUI is installed with `pip install "holderpro[gui]"` and launched with
 Enable GitHub Actions and artifact attestations, protect `main`, and create two
 environments with required reviewers:
 
-- `release`: allow deployments only from `main` and tags matching `v*`;
+- `release`: allow deployments only from `main`;
 - `pypi`: allow deployments only from `main`.
 
 Prefer a second trusted reviewer. A sole reviewer who may approve their own
@@ -77,11 +77,15 @@ Start the reviewer handoff with [the legal review brief](legal-review-brief.md).
    notices.
 3. Run Python, schema, native, license, and source-manifest checks.
 4. Run the real-engine synthetic regression suite on all four targets.
-5. Create an annotated prerelease tag such as `v0.1.0-alpha.1`.
+5. Create and push an annotated prerelease tag such as `v0.1.0-alpha.1`.
 
 ## Build the draft
 
-Pushing the tag starts `.github/workflows/release-build.yml`. The source job:
+From the protected `main` branch, manually run
+`.github/workflows/release-build.yml` and supply that tag. The workflow first
+uses its protected-main checkout to validate the tag spelling, annotated-tag
+type, and ancestry; it checks out the validated commit only after those gates.
+Tag pushes do not execute release code. The source job then:
 
 - checks out the exact HolderPro tag and complete pinned PrusaSlicer source;
 - resolves every dependency source to an exact version, URL, and SHA-256;
@@ -123,13 +127,22 @@ generic wheel or source distribution for a missing platform artifact.
 After testing the exact draft assets, manually run
 `.github/workflows/release-publish.yml` with the tag. The workflow:
 
-1. downloads and re-verifies the draft's exact inventory;
-2. makes the source-bearing GitHub release public;
-3. confirms that the version-matched corresponding source is publicly
+1. downloads and re-verifies the release's exact inventory, whether it is
+   still a draft or an identical prior attempt already made it public;
+2. proves that every wheel already present for this version on PyPI has the
+   exact expected filename, size, and SHA-256, then safely resumes missing
+   uploads only;
+3. makes the source-bearing GitHub release public idempotently;
+4. confirms that the version-matched corresponding source is publicly
    downloadable; and
-4. publishes the same four wheels through PyPI Trusted Publishing.
+5. publishes the same four wheels through PyPI Trusted Publishing and then
+   requires PyPI to report the complete exact four-wheel set, allowing a short
+   bounded retry window for normal package-index propagation.
 
-No artifact is rebuilt during promotion. Release notes link
+This recovery path handles a stopped or partially completed PyPI upload without
+accepting a changed pre-existing file; PyPI filenames are immutable, so any
+hash or inventory disagreement fails closed for manual investigation. No
+artifact is rebuilt during promotion. Release notes link
 [Release authenticity](release-authenticity.md), corresponding source, SBOMs,
 checksums, and the privacy policy.
 

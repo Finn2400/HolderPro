@@ -397,7 +397,7 @@
       "name": "libnest2d",
       "version": "PrusaSlicer vendored snapshot",
       "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
-      "license": "LGPL-3.0-or-later",
+      "license": "LGPL-3.0-only",
       "source_path": "bundled_deps/libnest2d",
       "notice_paths": [
         "bundled_deps/libnest2d/LICENSE.txt"

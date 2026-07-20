@@ -2,8 +2,6 @@
 name: Build release draft
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -15,12 +13,13 @@ permissions:
   contents: read
 
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.tag }}
   PRUSA_COMMIT: b028299c770b8380ee81c921a2867d522f288123
   PIP_CONSTRAINT: ${{ github.workspace }}/packaging/release-constraints.txt
 
 jobs:
   preflight:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     environment: release
     outputs:
@@ -31,10 +30,20 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: main
           fetch-depth: 0
       - id: version
         run: python packaging/scripts/release_version.py "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
+      - name: Validate the annotated tag with protected-main tooling
+        id: source_commit
+        run: |
+          trusted_main=$(git rev-parse HEAD)
+          git fetch --force origin "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          build_commit=$(git rev-list -n 1 "$RELEASE_TAG")
+          git merge-base --is-ancestor "$build_commit" "$trusted_main"
+          echo "build_commit=$build_commit" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$build_commit"
       - name: Match tag, Python package, and native product versions
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.pep440 }}
@@ -58,14 +67,6 @@ jobs:
                   f"tag={expected}, pyproject={package_version}, fallback={match.group(1)}"
               )
           PY
-      - name: Verify annotated tag and source commit
-        id: source_commit
-        run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          test "$(git cat-file -t "$RELEASE_TAG")" = tag
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main
-          echo "build_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: python packaging/scripts/validate_schema.py
       - run: python packaging/scripts/check_licenses.py
       - run: python packaging/scripts/verify_source_manifest.py
@@ -418,13 +419,11 @@ jobs:
           "$wheel_cli" version --json
           "$wheel_python" - <<'PY'
           from PySide6.QtWidgets import QApplication
-          from vtkmodules.vtkFiltersSources import vtkSphereSource
+          from holderpro.preview import ModelPreviewWidget
 
           application = QApplication.instance() or QApplication([])
           assert application is not None
-          source = vtkSphereSource()
-          source.Update()
-          assert source.GetOutput().GetNumberOfPoints() > 0
+          assert ModelPreviewWidget is not None
           PY
           REFERENCE="$RUNNER_TEMP/package wheel Ω reference.stl" \
           SUPPORTS="$RUNNER_TEMP/package wheel Ω supports.stl" \
@@ -440,15 +439,37 @@ jobs:
             "$RUNNER_TEMP/package wheel Ω reference.stl" \
             "$RUNNER_TEMP/package wheel Ω supports.stl" \
             --bottom-height 8 --base-thickness 3 --layer-height 0.4
+          REFERENCE="$RUNNER_TEMP/package wheel Ω reference.stl" \
           SUPPORTS="$RUNNER_TEMP/package wheel Ω supports.stl" \
           "$wheel_python" - <<'PY'
           import os
           from pathlib import Path
 
           import trimesh
+          from PySide6.QtWidgets import QApplication
 
-          support = trimesh.load_mesh(Path(os.environ["SUPPORTS"]), process=True)
+          from holderpro.mesh_io import load_reference_mesh
+          from holderpro.preview import ModelPreviewWidget, load_support_preview_mesh
+
+          reference_path = Path(os.environ["REFERENCE"])
+          support_path = Path(os.environ["SUPPORTS"])
+          support = trimesh.load_mesh(support_path, process=True)
           assert support.is_watertight and support.is_volume and support.volume > 0
+          application = QApplication.instance() or QApplication([])
+          preview = ModelPreviewWidget()
+          preview.resize(640, 480)
+          preview.load_mesh(load_reference_mesh(reference_path))
+          preview.load_support_mesh(load_support_preview_mesh(support_path))
+          preview.show()
+          application.processEvents()
+          render_window = preview.vtk_widget.GetRenderWindow()
+          render_window.SetOffScreenRendering(1)
+          render_window.Render()
+          assert preview._support_actor.GetVisibility()
+          assert preview._support_polydata.GetNumberOfCells() == len(support.faces)
+          assert render_window.SupportsOpenGL()
+          preview.close()
+          application.processEvents()
           PY
 
   draft:
