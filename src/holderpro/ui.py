@@ -517,9 +517,9 @@ if QtWidgets is not None:
             layout.addLayout(tools)
 
             self.pose_help_label = QtWidgets.QLabel(
-                "Pose: drag a colored X / Y / Z ring for one axis  •  drag the model "
-                "to tumble  •  drag empty space to orbit  •  Option/Alt-drag or "
-                "scroll for height"
+                "Pose: drag red X / green Y / blue Z for one axis  •  drag the "
+                "model to tumble  •  drag empty space to orbit  •  Option/Alt-drag "
+                "or scroll for height"
             )
             self.pose_help_label.setObjectName("poseHelp")
             self.pose_help_label.setWordWrap(True)
@@ -842,8 +842,8 @@ if QtWidgets is not None:
             self.pose_help_label.setVisible(mode == PAINT_MODE_POSE)
             if mode == PAINT_MODE_POSE:
                 self.surface_info_label.setText(
-                    "Pose object — colored rings constrain X, Y, or Z; drag the model "
-                    "to tumble; empty space orbits the view."
+                    "Pose object — red X, green Y, and blue Z rings constrain one "
+                    "axis; drag the model to tumble; empty space orbits the view."
                 )
             elif mode == PAINT_MODE_INSPECT:
                 self.surface_info_label.setText(
