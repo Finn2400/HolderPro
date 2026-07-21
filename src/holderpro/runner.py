@@ -337,6 +337,69 @@ def _count_connected_components(mesh: trimesh.Trimesh) -> int:
     return len({find(int(face[0])) for face in faces})
 
 
+def _count_material_components(mesh: trimesh.Trimesh) -> int:
+    """Count disconnected positive-volume regions, excluding cavity shells.
+
+    A valid solid may contain inward-oriented closed shells around enclosed air
+    pockets.  Those shells are separate surface components, but they are not
+    separate pieces of printable material.  Organic layer unions occasionally
+    create very small enclosed cavities where polygon topology changes between
+    adjacent layers, so the single-trunk check must use material connectivity
+    rather than raw surface-shell connectivity.
+
+    ``mesh`` has already passed the watertight and winding-consistency checks
+    before this helper is used.  Positive signed-volume shells represent
+    material components; negative shells represent cavities.
+    """
+
+    faces = np.asarray(mesh.faces, dtype=np.intp)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    if not len(faces):
+        return 0
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise GenerationError("Final support mesh does not contain triangles")
+    if np.any(faces < 0) or np.any(faces >= len(vertices)):
+        raise GenerationError("Final support mesh contains an invalid vertex index")
+
+    parent = np.arange(len(vertices), dtype=np.intp)
+
+    def find(vertex: int) -> int:
+        while parent[vertex] != vertex:
+            parent[vertex] = parent[parent[vertex]]
+            vertex = int(parent[vertex])
+        return vertex
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    for first, second, third in faces:
+        union(int(first), int(second))
+        union(int(first), int(third))
+
+    grouped_faces: dict[int, list[int]] = {}
+    for face_index, face in enumerate(faces):
+        grouped_faces.setdefault(find(int(face[0])), []).append(face_index)
+
+    material_components = 0
+    for face_indices in grouped_faces.values():
+        component_faces = faces[np.asarray(face_indices, dtype=np.intp)]
+        component_vertices = vertices[np.unique(component_faces)]
+        origin = component_vertices.mean(axis=0)
+        triangles = vertices[component_faces] - origin
+        signed_six_volumes = np.einsum(
+            "ij,ij->i",
+            triangles[:, 0],
+            np.cross(triangles[:, 1], triangles[:, 2]),
+        )
+        signed_volume = math.fsum(float(value) for value in signed_six_volumes) / 6.0
+        if signed_volume > 0.0:
+            material_components += 1
+    return material_components
+
+
 def _notify(callback: ProgressCallback | None, message: str) -> None:
     if callback is not None:
         callback(message)
@@ -710,7 +773,7 @@ def _atomic_export_mesh(
                 else None
             ),
             serialized_validator=(
-                lambda candidate: _count_connected_components(candidate) == 1
+                lambda candidate: _count_material_components(candidate) == 1
             )
             if require_single_component
             else None,
@@ -906,7 +969,7 @@ def generate(
         raise GenerationError(
             "Final support export is not a watertight positive-volume solid"
         )
-    component_count = _count_connected_components(support_mesh)
+    component_count = _count_material_components(support_mesh)
     if job.network_base_enabled and component_count != 1:
         raise GenerationError(
             "Connected-base generation produced "
@@ -935,7 +998,7 @@ def generate(
             else ""
         )
         raise GenerationError(f"{exc}{detail}") from exc
-    component_count = _count_connected_components(support_mesh)
+    component_count = _count_material_components(support_mesh)
     result = GenerationResult(
         output_path=job.output_path,
         engine_path=engine,
