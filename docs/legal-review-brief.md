@@ -8,30 +8,31 @@ records, not this public repository.
 
 ## Binary-license review scope
 
-HolderPro is an AGPL-3.0-or-later desktop application, Python package, and
+HolderPro is an AGPL-3.0-or-later Python package, optional desktop GUI, and
 headless native adapter. The native executable statically links the unmodified
 PrusaSlicer 2.9.6 Organic-support implementation pinned to commit
-`b028299c770b8380ee81c921a2867d522f288123`. PySide6/Qt is dynamically bundled
-in PyInstaller one-directory applications; VTK and the Python core dependencies
-are bundled runtime components.
+`b028299c770b8380ee81c921a2867d522f288123`. HolderPro wheels do not copy
+PySide6/Qt, VTK, or the Python core dependencies; `pip` installs those as
+separately licensed distributions.
 
-Initial distribution is limited to direct GitHub Releases and platform-specific
-PyPI wheels. Every binary release includes a version-matched archive containing
-HolderPro, the complete pinned PrusaSlicer source, adapter, schemas, dependency
-source manifest, patches, and all build and packaging scripts. Store channels
-remain prohibited pending a separate terms and AGPL compatibility review.
+Distribution is limited to GitHub Releases and platform-specific PyPI wheels.
+Every binary release includes a version-matched archive containing HolderPro,
+the complete pinned PrusaSlicer source, adapter, schemas, the exact native
+dependency source archives, dependency source manifest, patches, and all build
+and wheel-packaging scripts. Standalone bundles, stores, and other channels are
+not part of the project policy.
 
 Ask independent counsel to review at least:
 
 - whether the repository license, notices, UI disclosure, and corresponding
   source delivery satisfy the obligations of the combined native work;
-- whether the bundled Qt layout, relinking information, source links, and
-  notices satisfy the selected Qt/PySide license path;
+- whether the wheel correctly leaves Qt/VTK/core dependencies as separate
+  distributions and accurately declares their license paths;
 - the accuracy of the generated-output explanation and Prusa non-affiliation
   statement;
 - the resolved dependency license manifest and SBOM for the exact release;
-- signing, installer, website, and download notices; and
-- any proposed store, SaaS, hosted-generation, or commercial-service terms.
+- release-authenticity, website, and download notices; and
+- the permanent free-software and GitHub/PyPI-only governance policy.
 
 The review evidence is:
 
@@ -76,7 +77,7 @@ Live neighboring U.S. records identified for professional comparison include:
 Use the [USPTO search system](https://tmsearch.uspto.gov/search/s) and official
 [knockout-search guidance](https://www.uspto.gov/trademarks/search/federal-trademark-searching)
 to reproduce and expand the federal screen. WIPO, EUIPO/TMview, UK IPO, Ukraine,
-state registers, company names, domains, stores, and common-law uses still need
+state registers, company names, domains, and common-law uses still need
 manual professional review. Exact package-name availability on PyPI or npm is
 not trademark clearance.
 
@@ -91,7 +92,8 @@ The project owner must provide privately:
   and slogans;
 - planned downloadable software, hosted services, custom printing, physical
   stands, training, marketplace sales, and merchandise;
-- free/open-source and paid revenue models, buyers, and sales channels;
+- the official no-charge/open-source model, grants or donations, and any
+  third-party commercial uses permitted by the AGPL;
 - current users, revenue, releases, domains, handles, and any third-party contact;
 - rebrand tolerance, alternative names, deadline, and search/filing budget; and
 - logo variants if a logo is ultimately pursued.

@@ -22,6 +22,7 @@ from holderpro.runner import (  # noqa: E402
     _atomic_export_mesh,
     _canonicalize_painted_stl_mesh,
     _count_connected_components,
+    _count_material_components,
     _load_reference_mesh,
     _retain_failed_export_geometry,
     _sanitize_native_layer_geometry,
@@ -156,6 +157,26 @@ def test_component_count_handles_connected_and_disconnected_triangle_meshes() ->
     assert _count_connected_components(trimesh.Trimesh()) == 0
     assert _count_connected_components(connected) == 1
     assert _count_connected_components(disconnected) == 2
+
+
+def test_material_component_count_does_not_treat_cavity_as_separate_support() -> None:
+    outer = trimesh.creation.box(extents=(4.0, 4.0, 4.0))
+    cavity = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    cavity.invert()
+    solid_with_cavity = trimesh.util.concatenate((outer, cavity))
+
+    assert solid_with_cavity.is_watertight
+    assert solid_with_cavity.is_winding_consistent
+    assert _count_connected_components(solid_with_cavity) == 2
+    assert _count_material_components(solid_with_cavity) == 1
+
+
+def test_material_component_count_still_rejects_separate_positive_solids() -> None:
+    left = trimesh.creation.box()
+    right = trimesh.creation.box()
+    right.apply_translation((3.0, 0.0, 0.0))
+
+    assert _count_material_components(trimesh.util.concatenate((left, right))) == 2
 
 
 def test_single_component_export_validation_preserves_existing_output(

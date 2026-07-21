@@ -21,34 +21,12 @@ def sha256(path: Path) -> str:
 
 def expected_names(target_name: str, display: str, version: str) -> set[str]:
     target = TARGETS[target_name]
-    result = {
+    return {
         f"holderpro-{version}-py3-none-{target.wheel_tag}.whl",
         f"HolderPro-{target_name}.cdx.json",
         f"HolderPro-{target_name}-native-manifest.json",
         f"HolderPro-{target_name}-build-environment.json",
-        (
-            f"THIRD_PARTY_LICENSES-{target_name}.zip"
-            if target_name == "windows-x86_64"
-            else f"THIRD_PARTY_LICENSES-{target_name}.tar.gz"
-        ),
     }
-    if target_name.startswith("macos-"):
-        result.add(f"HolderPro-{display}-{target_name}.dmg")
-    elif target_name == "windows-x86_64":
-        result.update(
-            {
-                f"HolderPro-{display}-windows-x86_64-setup.exe",
-                f"HolderPro-{display}-windows-x86_64-portable.zip",
-            }
-        )
-    elif target_name == "linux-x86_64":
-        result.update(
-            {
-                f"HolderPro-{display}-linux-x86_64.AppImage",
-                f"HolderPro-{display}-linux-x86_64.tar.zst",
-            }
-        )
-    return result
 
 
 def main() -> int:

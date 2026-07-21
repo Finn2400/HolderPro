@@ -104,17 +104,19 @@ optimization, function/data sections, and platform dead-code elimination.
 CTest covers help and provenance, input/output alias rejection, and secure
 private-output staging. Release jobs should strip an installed staging
 copy—not the debuggable build-tree executable—before runtime dependency
-auditing and code signing:
+auditing and wheel packaging:
 
 ```sh
 cmake --install native/build/macos-arm64 \
   --prefix staging/macos-arm64 --strip
 ```
 
-On Windows the install step also resolves and copies non-system runtime DLLs
-from the pinned dependency prefix (including GMP) beside the executable. Wheel
-and installer staging must copy the complete installed `bin/` directory, then
-audit it; copying only the `.exe` does not produce a self-contained package.
+On Windows the install step resolves any non-system runtime DLLs imported from
+the pinned dependency prefix and stages them beside the executable. The current
+dead-stripped release engine imports none of those optional DLLs, but wheel
+staging still copies and audits the complete installed `bin/` directory so a
+future dependency change cannot be missed. Microsoft Visual C++/UCRT system
+libraries remain external prerequisites and are never copied into the wheel.
 
 To configure without a helper, set `PRUSASLICER_SOURCE_DIR` and
 `HOLDERPRO_PRUSASLICER_DEPS_PREFIX`, then run the desired configure and build

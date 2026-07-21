@@ -1,9 +1,9 @@
 # HolderPro
 
-HolderPro is a desktop and command-line tool for designing printable, solid
-Organic support stands. Paint the surfaces that may receive support, pose the
-reference model, inspect underside angle and concavity, and export a connected,
-watertight support-only STL.
+HolderPro is a free and open-source desktop and command-line tool for designing
+printable, solid Organic support stands. Paint the surfaces that may receive
+support, pose the reference model, inspect underside angle and concavity, and
+export a connected, watertight support-only STL.
 
 HolderPro uses the unmodified PrusaSlicer 2.9.6 Organic-support implementation
 through a headless adapter. The adapter captures the filled support regions
@@ -30,10 +30,12 @@ approximation.
 
 ## Install
 
-The easiest installation will be a signed desktop package from
-[GitHub Releases](https://github.com/Finn2400/HolderPro/releases). The first
-public alpha is gated on native builds and clean-machine generation tests for
-macOS arm64, macOS x86_64, Windows x64, and Linux x86_64.
+HolderPro is distributed only through PyPI and
+[GitHub Releases](https://github.com/Finn2400/HolderPro/releases). PyPI is the
+normal installation path; GitHub carries the exact same wheels together with
+checksums, SBOMs, provenance, and corresponding source. The first public alpha
+is gated on native builds and clean-environment generation tests for macOS
+arm64, macOS x86_64, Windows x64, and Linux x86_64.
 
 Platform wheels include the matching native engine, so a compiler,
 PrusaSlicer, CMake, and Git are not runtime requirements:
@@ -55,6 +57,17 @@ HolderPro supports Python 3.11–3.14. PyPI releases contain wheels only;
 there is no source distribution until the complete native build is
 deterministically reproducible from it. There is no npm package because
 HolderPro has no JavaScript API.
+
+On Windows, the native engine uses the current Microsoft Visual C++ v14 x64
+runtime as an external system prerequisite. HolderPro does not copy that
+proprietary runtime into its open-source wheel. Most current Windows systems
+already have it; if `holderpro doctor` reports a loader error, install the
+[latest supported x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+from Microsoft and retry.
+
+HolderPro does not publish standalone DMGs, Windows installers, AppImages, or
+other platform bundles. This avoids paid signing services and duplicate
+packaging paths; `holderpro-gui` remains the complete graphical application.
 
 ## Desktop workflow
 
@@ -98,6 +111,19 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md), then read the
 [build guide](docs/building.md), [architecture](docs/architecture.md), and
 [release process](docs/releasing.md). Native builds never install package
 managers or mutate a supplied source checkout.
+
+## Free and open source
+
+HolderPro's official source and downloads are available at no charge under
+AGPL-3.0-or-later. The project has no proprietary edition, paid feature tier,
+license key, account requirement, network activation, telemetry, or delayed
+source release. Contributions retain their authors' copyright and require no
+copyright assignment or proprietary-relicensing agreement.
+
+The full commitment and succession rules are in
+[GOVERNANCE.md](GOVERNANCE.md). Release verification is documented in
+[Release authenticity](docs/release-authenticity.md), and removal instructions
+are in [Uninstalling HolderPro](docs/uninstalling.md).
 
 ## Licensing and PrusaSlicer
 

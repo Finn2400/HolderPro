@@ -18,4 +18,7 @@ Describe the user-visible problem and result.
 - [ ] Existing outputs are replaced atomically only after validation.
 - [ ] No user model, diagnostic geometry, local path, cache, or build output is included.
 - [ ] New dependencies and licenses are documented.
+- [ ] Every shipped dependency remains free/open source; no paid or proprietary feature path is added.
+- [ ] Privacy, network, system-change, and uninstall effects are documented.
+- [ ] Release/build/provenance changes preserve public source and GitHub/PyPI-only distribution.
 - [ ] `CHANGELOG.md` is updated, or the change is not user-visible.

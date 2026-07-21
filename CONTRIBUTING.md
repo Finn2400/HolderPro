@@ -1,7 +1,17 @@
 # Contributing to HolderPro
 
 Thank you for improving HolderPro. Contributions are accepted under the
-project's AGPL-3.0-or-later license.
+project's AGPL-3.0-or-later license. Read [GOVERNANCE.md](GOVERNANCE.md) for the
+project's permanent free-software commitments and decision process.
+
+## Licensing your contribution
+
+You retain copyright in your contribution. By submitting it, you represent
+that you have the right to provide it and license it under
+AGPL-3.0-or-later. HolderPro requires no copyright assignment and no
+contributor agreement granting proprietary-relicensing rights. Do not submit
+proprietary code, binaries, model data, or dependencies under incompatible
+terms.
 
 ## Before opening a change
 
@@ -13,8 +23,8 @@ project's AGPL-3.0-or-later license.
   PrusaSlicer `Print::process()` and Organic source path are intentional.
 - Never commit real user models, diagnostic geometry, or paths from diagnostic
   bundles. Tests must use small, redistribution-safe synthetic fixtures.
-- Do not add telemetry, silent network access, automatic updating, or an
-  app-store target without an approved design and license review.
+- Do not add telemetry, silent network access, automatic updating, a paid
+  feature gate, proprietary component, or another distribution channel.
 
 ## Local checks
 
@@ -50,6 +60,7 @@ A pull request should:
 - preserve painting-to-pose registration and support-mask strictness;
 - reload every exported STL and prove watertight positive volume;
 - list new runtime/build dependencies and their licenses;
+- document privacy, network, system-change, and uninstall effects;
 - avoid unrelated formatting or generated artifacts; and
 - update `CHANGELOG.md` for user-visible changes.
 

@@ -15,3 +15,13 @@ path = "upstream/prusaslicer-2.9.6-organic/**"
 precedence = "override"
 SPDX-FileCopyrightText = "PrusaSlicer contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
+path = [
+  "LICENSE",
+  "LICENSES/AGPL-3.0-or-later.txt",
+  "upstream/prusaslicer-2.9.6-organic/LICENSE",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2007 Free Software Foundation, Inc."
+SPDX-License-Identifier = "AGPL-3.0-or-later"

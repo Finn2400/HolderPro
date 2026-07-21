@@ -11,40 +11,52 @@ on:
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
+
 jobs:
   verify:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     environment: release
     outputs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       pep440: ${{ steps.version.outputs.pep440 }}
       display: ${{ steps.version.outputs.display }}
+      build_commit: ${{ steps.source_commit.outputs.build_commit }}
     permissions:
       contents: read
       attestations: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: main
           fetch-depth: 0
       - run: sudo apt-get update && sudo apt-get install -y zstd
       - id: version
-        run: python packaging/scripts/release_version.py "${{ inputs.tag }}" --github-output >> "$GITHUB_OUTPUT"
+        run: python packaging/scripts/release_version.py "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
+      - name: Validate the annotated tag with protected-main tooling
+        id: source_commit
+        run: |
+          trusted_main=$(git rev-parse HEAD)
+          git fetch --force origin "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          tag_commit=$(git rev-list -n 1 "$RELEASE_TAG")
+          git merge-base --is-ancestor "$tag_commit" "$trusted_main"
+          echo "build_commit=$tag_commit" >> "$GITHUB_OUTPUT"
+          echo "HOLDERPRO_BUILD_ID=$tag_commit" >> "$GITHUB_ENV"
+          git checkout --detach "$tag_commit"
       - name: Download exact draft assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release="repos/$GITHUB_REPOSITORY/releases/tags/${{ inputs.tag }}"
-          test "$(gh api "$release" --jq .draft)" = true
-          test "$(gh api "$release" --jq .tag_name)" = "${{ inputs.tag }}"
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          test "$(git cat-file -t '${{ inputs.tag }}')" = tag
-          tag_commit=$(git rev-list -n 1 "${{ inputs.tag }}")
-          test "$tag_commit" = "$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$tag_commit" origin/main
-          echo "HOLDERPRO_BUILD_ID=$tag_commit" >> "$GITHUB_ENV"
+          release="repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"
+          draft=$(gh api "$release" --jq .draft)
+          test "$draft" = true || test "$draft" = false
+          test "$(gh api "$release" --jq .tag_name)" = "$RELEASE_TAG"
+          test "$HOLDERPRO_BUILD_ID" = "$(git rev-parse HEAD)"
           mkdir release-assets
-          gh release download "${{ inputs.tag }}" --dir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
       - name: Recheck legal publication gates
         env:
           LICENSE_REVIEW_APPROVED: ${{ vars.HOLDERPRO_LICENSE_REVIEW_APPROVED }}
@@ -61,6 +73,10 @@ jobs:
             --display-version "${{ steps.version.outputs.display }}" \
             --pep440-version "${{ steps.version.outputs.pep440 }}" \
             --include-checksums
+      - name: Reverify the complete corresponding-source archive
+        run: |
+          python packaging/scripts/verify_corresponding_source.py \
+            "release-assets/holderpro-${{ steps.version.outputs.display }}-corresponding-source.tar.zst"
       - name: Verify every payload is bound to the current tag commit
         run: |
           python packaging/scripts/verify_release_provenance.py release-assets \
@@ -71,7 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          workflow_identity="^https://github\\.com/${GITHUB_REPOSITORY}/\\.github/workflows/release-build\\.yml@refs/(tags/.+|heads/main)$"
+          workflow_identity="^https://github\\.com/${GITHUB_REPOSITORY}/\\.github/workflows/release-build\\.yml@refs/heads/main$"
           find release-assets -maxdepth 1 -type f ! -name SHA256SUMS -print0 | while IFS= read -r -d '' asset; do
             gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
               --cert-identity-regex "$workflow_identity" --deny-self-hosted-runners
@@ -83,9 +99,13 @@ jobs:
           test "$(find wheels -maxdepth 1 -name '*.whl' | wc -l)" -eq 4
           test -z "$(find wheels -type f ! -name '*.whl' -print -quit)"
           test -z "$(find release-assets -maxdepth 1 -type f -name 'holderpro*.tar.gz' -print -quit)"
+      - name: Verify a new or safely resumable PyPI release
+        run: |
+          python packaging/scripts/verify_pypi_release.py wheels \
+            --version "${{ steps.version.outputs.pep440 }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ steps.version.outputs.pep440 }}
           path: wheels
           if-no-files-found: error
 
@@ -96,13 +116,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Publish the existing source-bearing draft without rebuilding
+      - name: Publish the existing GitHub draft without rebuilding
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           args=(--draft=false)
           if [ "${{ needs.verify.outputs.prerelease }}" = true ]; then args+=(--prerelease=true); else args+=(--prerelease=false --latest); fi
-          gh release edit "${{ inputs.tag }}" "${args[@]}" --repo "$GITHUB_REPOSITORY"
+          gh release edit "$RELEASE_TAG" "${args[@]}" --repo "$GITHUB_REPOSITORY"
 
   verify-public-source:
     needs: [verify, publish-release]
@@ -112,7 +132,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ needs.verify.outputs.pep440 }}
           path: dist
       - name: Reject source distributions
         run: |
@@ -123,11 +143,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           source_name="holderpro-${{ needs.verify.outputs.display }}-corresponding-source.tar.zst"
-          gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --pattern "$source_name" --dir "$RUNNER_TEMP/public-source"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$source_name" --dir "$RUNNER_TEMP/public-source"
           test -s "$RUNNER_TEMP/public-source/$source_name"
 
   pypi:
-    needs: verify-public-source
+    needs: [verify, verify-public-source]
     runs-on: ubuntu-22.04
     environment: pypi
     permissions:
@@ -135,6 +155,27 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: pypi-wheels-${{ inputs.tag }}
+          name: pypi-wheels-${{ needs.verify.outputs.pep440 }}
           path: dist
       - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          skip-existing: true
+
+  verify-pypi:
+    needs: [verify, pypi]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.verify.outputs.build_commit }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: pypi-wheels-${{ needs.verify.outputs.pep440 }}
+          path: dist
+      - name: Require all four exact wheels on PyPI
+        run: |
+          python packaging/scripts/verify_pypi_release.py dist \
+            --version "${{ needs.verify.outputs.pep440 }}" \
+            --require-complete

@@ -9,10 +9,16 @@ holderpro version --json
 
 ## Engine not found or rejected
 
-Official wheels and desktop packages contain the matching
-`holderpro-organic-engine`. Reinstall the package for your platform; do not
+Official platform wheels contain the matching `holderpro-organic-engine`.
+Reinstall the package for your platform; do not
 download an engine from an unrelated release. `doctor` reports the searched
 locations and rejects a version/commit mismatch.
+
+On Windows, loader error 126 commonly means the external Microsoft Visual C++
+v14 x64 runtime is missing. HolderPro intentionally does not bundle this
+proprietary system component. Install Microsoft's
+[latest supported x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist),
+then run `holderpro doctor` again.
 
 ## No support appears
 

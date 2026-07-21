@@ -28,8 +28,8 @@ jobs:
       - run: mypy
       - run: python packaging/scripts/validate_schema.py
       - run: python packaging/scripts/check_licenses.py
+      - run: reuse lint
       - run: python packaging/scripts/verify_source_manifest.py
-      - run: python packaging/scripts/check_bundle_policy_regression.py
 
   tests:
     strategy:

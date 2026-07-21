@@ -1,7 +1,7 @@
 # Building HolderPro
 
-End users should install a wheel or desktop package. These instructions are for
-contributors and release builders.
+End users should install a wheel from PyPI or GitHub Releases. These
+instructions are for contributors and release builders.
 
 ## Python development
 
@@ -18,7 +18,8 @@ pytest
 On Windows, activate with `.venv\Scripts\Activate.ps1`.
 
 Core installs contain NumPy, trimesh, manifold3d, and Shapely. The `gui` extra
-adds PySide6-Essentials 6.7–6.9 and VTK. The Qt for Python 6.10+ macOS wheels
+adds PySide6-Essentials and VTK. On macOS, PySide6-Essentials is limited to
+6.7–6.9. The Qt for Python 6.10+ macOS wheels
 tested for v0.1 declare a deployment target newer than HolderPro's macOS 13
 floor, so they remain excluded until upstream restores that contract. HolderPro
 intentionally does not install the PySide6
@@ -46,10 +47,15 @@ explicit `--download-source` / `-DownloadSource` option is passed. Dependency
 source archives are downloaded into the private build cache and verified
 against their pinned hashes. Release users never need these tools.
 
-The helpers also prefetch GMP 6.2.1 from hash-verified GNU HTTPS mirrors before
-running PrusaSlicer's dependency graph. They set CMake 4's external policy
-minimum to 3.5 so older third-party CMake projects retain their documented
-compatibility behavior; neither action patches the pinned PrusaSlicer source.
+Unix helpers also prefetch GMP 6.2.1 from hash-verified GNU HTTPS mirrors before
+running PrusaSlicer's dependency graph. PrusaSlicer's Windows recipe instead
+uses its pinned GMP 5.0.1 and MPFR 3.0.0 headers/import libraries/DLLs as build
+inputs. HolderPro verifies those exact upstream bytes and version markers and
+includes the matching authoritative source archives in corresponding source;
+the newer 6.2.1/4.2.1 source records remain for the Unix targets. The helpers
+also set CMake 4's external policy minimum to 3.5 so older third-party CMake
+projects retain their documented compatibility behavior. None of these checks
+patches the pinned PrusaSlicer source.
 
 Available configure presets are:
 
@@ -90,39 +96,41 @@ Release artifacts use the exact Python 3.11.9 interpreter and dependency
 versions in `packaging/release-constraints.txt`; the broader project ranges
 remain the supported end-user API contract.
 
-## Desktop bundle
+## Platform wheel
 
-Point the PyInstaller specification at the already-tested engine:
+Install the tested engine into a clean staging directory, then build the wheel
+with the target's explicit platform tag:
 
 ```console
-python -m pip install -c packaging/release-constraints.txt \
-  build setuptools wheel "pyinstaller>=6,<7" pillow
-python packaging/scripts/collect_python_licenses.py \
-  --output build/third-party-licenses
-python packaging/scripts/verify_python_licenses.py build/third-party-licenses
-python packaging/scripts/build_icons.py
-HOLDERPRO_VERSION=0.1.0a1 \
-  HOLDERPRO_BUILD_ID="$(git rev-parse HEAD)" \
-  HOLDERPRO_NATIVE_BIN=/absolute/path/to/native/stage/macos-arm64/bin \
-  HOLDERPRO_THIRD_PARTY_LICENSES=/absolute/path/to/build/third-party-licenses \
-  pyinstaller --clean --noconfirm packaging/pyinstaller/HolderPro.spec
-python packaging/scripts/refresh_desktop_native_manifest.py dist/HolderPro.app \
-  --expected-version 0.1.0a1 --expected-target macos-arm64 \
-  --expected-build-id "$(git rev-parse HEAD)"
-python packaging/scripts/verify_macos_bundle.py dist/HolderPro.app \
-  --version 0.1.0a1
-python packaging/scripts/verify_desktop_bundle.py dist/HolderPro.app
+cmake --install native/build/macos-arm64 \
+  --prefix native/stage/macos-arm64 --strip
+python packaging/scripts/build_platform_wheel.py \
+  --repository . \
+  --native-bin native/stage/macos-arm64/bin \
+  --version 0.1.0a1 \
+  --build-id "$(git rev-parse HEAD)" \
+  --target macos-arm64 \
+  --platform-tag macosx_13_0_arm64 \
+  --native-license-directory build/native-license-bundle \
+  --output dist
+python packaging/scripts/verify_platform_wheel.py \
+  dist/holderpro-0.1.0a1-py3-none-macosx_13_0_arm64.whl \
+  --platform-tag macosx_13_0_arm64 \
+  --version 0.1.0a1 \
+  --build-id "$(git rev-parse HEAD)" \
+  --target macos-arm64
 ```
 
-PyInstaller receives an explicit Qt/VTK module allow-list. Do not replace it
-with a blanket collection of a developer environment. On macOS the result is a
-`.app`; other targets produce `dist/HolderPro/`.
+The wheel contains HolderPro's Python source, the matching native engine and
+any required FOSS companion DLLs, and a digest-bound legal-notice bundle for
+the complete reviewed native dependency set. Core and GUI dependencies remain
+separately installed packages. Do not copy a development environment, Qt, VTK,
+proprietary system runtime DLLs, or platform installer payloads into the wheel.
 
 ## Reproducibility inputs
 
 Each target attaches `HolderPro-<target>-build-environment.json`, recording the
-compiler, SDK, CMake, exact Python, constraints digest, runner image, and
-platform packager inputs (including the Linux appimagetool URL and hash).
+compiler, SDK, CMake, exact Python, constraints digest, and runner image.
 `holderpro-organic-engine --version-json` embeds the exact HolderPro source
 commit as its build ID. Reproducibility means rebuilding from the corresponding
 source and these recorded inputs—not assuming binaries from different SDKs are

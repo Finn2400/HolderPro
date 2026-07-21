@@ -2,10 +2,21 @@
 
 ## Paint and pose
 
-Use **Pose object** to change the actual printable orientation. Ordinary drag
-adjusts X/Y rotation, Shift-drag adjusts Z rotation, and Alt/Option-drag changes
-height. Scrolling in pose mode changes height in one-millimetre steps. Numeric
-pose controls remain synchronized.
+Use **Pose object** to change the actual printable orientation. Drag the visible
+red **X**, green **Y**, or blue **Z** ring to rotate around exactly that world
+axis. Drag directly on the model for camera-relative free rotation; drag empty
+background to orbit the camera without changing the printable pose.
+Drag the amber **Height** bar beside the view upward to raise the model or
+downward to lower it. Alt/Option-drag provides the same relative height control,
+and scrolling in pose mode changes height in one-millimetre steps.
+Numeric pose controls remain synchronized. Rotation handles disappear
+completely and the Height bar is disabled while painting, so printable pose and
+painted-facet registration stay locked.
+
+The build plate is the labelled 200 x 200 mm square at Z=0. Minor 10 mm lines,
+major 50 mm lines, and the perimeter use white on a dark preview background and
+black on a light one, so the plate boundary remains visible if the preview theme
+changes.
 
 Use **Orbit** for camera-only movement. Selecting **Paint support**, **Block**,
 or **Erase** locks both object pose and camera so a stroke cannot become

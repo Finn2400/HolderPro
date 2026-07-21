@@ -28,6 +28,10 @@ QWidget { color: #edf1f4; background-color: #191c20; font-size: 12px; }
 QLabel#title { font-size: 20px; font-weight: 700; }
 QLabel#muted { color: #aeb6bf; }
 QLabel#status { padding: 8px; background: #15181b; border-radius: 5px; }
+QLabel#poseHelp {
+  padding: 7px 9px; background: #20262d; border: 1px solid #4b5966;
+  border-radius: 5px; color: #eef4f8;
+}
 QGroupBox { border: 1px solid #3b434c; border-radius: 6px; margin-top: 10px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
 QLineEdit, QDoubleSpinBox, QSpinBox {
@@ -451,8 +455,10 @@ if QtWidgets is not None:
                 (
                     "Pose object",
                     PAINT_MODE_POSE,
-                    "Drag to rotate; Shift-drag rotates around Z; Option/Alt-drag "
-                    "or scroll raises and lowers the model.",
+                    "Drag the red X, green Y, or blue Z ring for one-axis rotation; "
+                    "drag the model for free rotation; drag empty space to orbit the "
+                    "view; drag the amber Height bar, Option/Alt-drag, or scroll to "
+                    "raise and lower the model.",
                 ),
                 (
                     "Paint support",
@@ -510,6 +516,16 @@ if QtWidgets is not None:
                 tools.addWidget(button)
                 self.view_buttons.append(button)
             layout.addLayout(tools)
+
+            self.pose_help_label = QtWidgets.QLabel(
+                "Pose: drag red X / green Y / blue Z for one axis  •  drag the "
+                "model to tumble  •  drag empty space to orbit  •  drag the amber "
+                "Height bar up/down"
+            )
+            self.pose_help_label.setObjectName("poseHelp")
+            self.pose_help_label.setWordWrap(True)
+            self.pose_help_label.setVisible(False)
+            layout.addWidget(self.pose_help_label)
 
             self.preview = ModelPreviewWidget(panel)
             self.preview.paintChanged.connect(self._on_paint_changed)
@@ -621,13 +637,13 @@ if QtWidgets is not None:
             form.addRow("Bottom height", self.bottom_height_spin)
 
             self.rotation_x_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             self.rotation_y_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             self.rotation_z_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             form.addRow("Rotate X", self.rotation_x_spin)
             form.addRow("Rotate Y", self.rotation_y_spin)
@@ -824,10 +840,11 @@ if QtWidgets is not None:
 
         @QtCore.Slot(str)
         def _on_interaction_mode_changed(self, mode: str) -> None:
+            self.pose_help_label.setVisible(mode == PAINT_MODE_POSE)
             if mode == PAINT_MODE_POSE:
                 self.surface_info_label.setText(
-                    "Pose object — drag rotates; Shift-drag rotates Z; "
-                    "Option/Alt-drag or scroll changes height."
+                    "Pose object — red X, green Y, and blue Z rings constrain one "
+                    "axis; the amber Height bar raises/lowers; empty space orbits."
                 )
             elif mode == PAINT_MODE_INSPECT:
                 self.surface_info_label.setText(
@@ -1313,9 +1330,9 @@ if QtWidgets is not None:
             )
             text = f"""
                 <h2>HolderPro {__version__}</h2>
-                <p>Copyright © 2026 Finn. HolderPro is free software licensed
-                under the GNU Affero General Public License, version 3 or later,
-                and comes with no warranty.</p>
+                <p>Copyright © 2026 HolderPro contributors. HolderPro is free
+                software licensed under the GNU Affero General Public License,
+                version 3 or later, and comes with no warranty.</p>
                 <p><a href="{release_url}">Version-specific release and
                 corresponding-source archive</a> ·
                 <a href="{source_url}">exact HolderPro source tree</a> ·

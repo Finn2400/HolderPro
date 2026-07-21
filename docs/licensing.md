@@ -17,6 +17,12 @@ license text is in `LICENSE`. The application must provide a visible
 - third-party notices; and
 - the non-affiliation statement below.
 
+The official project is permanently free and open source as described in
+[`GOVERNANCE.md`](../GOVERNANCE.md). HolderPro has no proprietary edition,
+commercial dual-license path, paid feature gate, or delayed source release.
+That project promise does not restrict the AGPL's permission for anyone to use
+HolderPro commercially or charge for copies or services.
+
 ## PrusaSlicer relationship
 
 The approved description is:
@@ -49,23 +55,25 @@ corresponding-source archive described in
 [corresponding-source.md](corresponding-source.md). Release notes must link the
 archive directly. A moving `main` branch link is not sufficient.
 
-Qt libraries are kept dynamically replaceable in one-directory desktop
-packages. Their notices, license terms, source link/offer, and relinking rights
-must be validated for each resolved release. The SBOM and notice generation
-gate catches dependency changes but does not replace legal review.
+The HolderPro wheel does not bundle Qt, VTK, or the core Python dependencies.
+`pip` installs those separately licensed distributions. Each wheel bundles only
+HolderPro source and the target's native engine; the release source closure and
+native notices must match that exact engine. The SBOM and notice gates catch
+dependency changes but do not replace legal review.
 
 ## Distribution channels
 
-Initial releases are direct GitHub downloads and PyPI wheels. App-store terms
-can impose restrictions that conflict with copyleft rights; no Apple App Store,
-Microsoft Store, Snap Store, or other restricted store listing is authorized
-until a separate AGPL compatibility review approves that channel.
+Official releases use GitHub Releases and PyPI only. Standalone desktop bundles,
+app stores, package-manager repositories, hosted generation services, and
+additional download channels are outside the project policy. Changing that
+policy requires the public governance process and a separate AGPL review.
 
 ## Trademark gate
 
-Before adopting a logo, signing identity, domain strategy, or stable `1.0`
-branding, commission a professional trademark knockout search for HolderPro in
-the relevant countries and software/manufacturing classes. Record the written
+Before adopting a logo, domain strategy, or stable `1.0` branding, obtain a
+professional trademark knockout search for HolderPro in the relevant countries
+and software/manufacturing classes. Paid counsel, a qualified pro-bono lawyer,
+or a supervised law-school clinic may satisfy the gate. Record the written
 disposition in the private release records. A web search or package-index check
 does not satisfy this gate. The technical evidence and preliminary screening
 are organized in [the legal review brief](legal-review-brief.md).
