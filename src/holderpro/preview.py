@@ -80,6 +80,8 @@ _POSE_AXES = {
 }
 _INTERACTIVE_ROTATION_DECIMALS = 2
 _INTERACTIVE_HEIGHT_DECIMALS = 2
+DEFAULT_PREVIEW_FACE_LIMIT = 2_500_000
+_EXTREME_DISPLAY_THRESHOLD_FACES = 8_000_000
 
 
 def _linearized_srgb(value: float) -> float:
@@ -1365,9 +1367,24 @@ if QtWidgets is not None:
         def face_count(self) -> int:
             return len(self._paint_states)
 
-        def load_mesh(self, mesh: trimesh.Trimesh) -> None:
+        @property
+        def display_face_count(self) -> int:
+            return (
+                len(self._display_mesh.faces)
+                if self._display_mesh is not None
+                else 0
+            )
+
+        def load_mesh(
+            self,
+            mesh: trimesh.Trimesh,
+            *,
+            display_face_limit: int | None = DEFAULT_PREVIEW_FACE_LIMIT,
+        ) -> None:
             if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):
                 raise ValueError("The preview model contains no triangle faces")
+            if display_face_limit is not None and display_face_limit < 4:
+                raise ValueError("display face limit must be at least four")
             # The loader hands ownership of this mesh to the preview. Keeping
             # it directly avoids a ~450 MB duplicate for 12-million-face 3MFs.
             self._mesh = mesh
@@ -1386,29 +1403,31 @@ if QtWidgets is not None:
             # visible/pickable triangle correspond directly to a source face.
             # Only protect the interactive renderer from exceptionally large
             # meshes, and retain far more detail when that safeguard is needed.
-            if len(self._mesh.faces) > 1_750_000:
+            use_proxy = (
+                display_face_limit is not None
+                and len(self._mesh.faces) > display_face_limit
+            )
+            if use_proxy:
+                assert display_face_limit is not None
                 self._pose_bounds_vertices_source = np.asarray(
                     self._mesh.vertices, dtype=float
                 )
                 # Registering every proxy face back to the exact paint mesh is
                 # intentionally precise but uses one spatial query per face.
-                # A half-million-face proxy remains visually dense for an
-                # extreme 10M+ triangle scientific model while avoiding several
-                # minutes of startup work. The exact source mesh and locator
-                # remain untouched for brush selection and generation.
-                display_target = (
-                    500_000 if len(self._mesh.faces) > 8_000_000 else 1_250_000
-                )
+                # The user-selected limit intentionally spends substantial
+                # RAM/GPU memory to preserve fine molecular detail. The exact
+                # source mesh and locator remain untouched for brush selection
+                # and generation.
                 self._display_mesh = (
                     _cluster_polydata_for_preview(
                         self._source_polydata,
-                        target_face_count=display_target,
+                        target_face_count=display_face_limit,
                     )
-                    if len(self._mesh.faces) > 8_000_000
+                    if len(self._mesh.faces) > _EXTREME_DISPLAY_THRESHOLD_FACES
                     else _decimate_polydata_for_preview(
                         self._source_polydata,
                         source_face_count=len(self._mesh.faces),
-                        target_face_count=display_target,
+                        target_face_count=display_face_limit,
                     )
                 )
                 self._display_to_source = closest_source_faces(
@@ -1424,6 +1443,22 @@ if QtWidgets is not None:
                 )
                 self._center_of_mass_source = self._calculate_center_of_mass(
                     self._display_mesh
+                )
+            elif len(self._mesh.faces) > 1_750_000:
+                # Explicit high-memory mode: render and analyze every source
+                # face. The confirmation dialog in the desktop UI makes this
+                # opt-in because per-face colors, normals, centers, and
+                # adjacency can consume several gigabytes.
+                self._pose_bounds_vertices_source = np.asarray(
+                    self._mesh.vertices, dtype=float
+                )
+                self._display_mesh = self._mesh
+                self._display_to_source = np.arange(
+                    len(self._mesh.faces), dtype=np.int64
+                )
+                self._concavity = face_concavity(self._mesh)
+                self._center_of_mass_source = self._calculate_center_of_mass(
+                    self._mesh
                 )
             else:
                 topology_mesh = merged_topology_copy(self._mesh)
@@ -1441,7 +1476,11 @@ if QtWidgets is not None:
                 )
 
             faces = np.asarray(self._display_mesh.faces, dtype=np.int64)
-            self.polydata.SetPolys(_vtk_triangle_cells(faces))
+            self.polydata.SetPolys(
+                self._source_polydata.GetPolys()
+                if self._display_mesh is self._mesh
+                else _vtk_triangle_cells(faces)
+            )
             self.set_pose(*self._pose)
             self.fit_camera()
             self.paintChanged.emit(0, 0)
@@ -2069,6 +2108,7 @@ else:
 
 
 __all__ = [
+    "DEFAULT_PREVIEW_FACE_LIMIT",
     "ModelPreviewWidget",
     "PAINT_MODE_BLOCKER",
     "PAINT_MODE_ENFORCER",

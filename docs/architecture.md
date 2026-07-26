@@ -61,9 +61,11 @@ reader compatibility policy, fixtures, and release note.
   element tree and core installs do not acquire trimesh's optional
   NetworkX/lxml dependency path. Explicit archive, compression-ratio,
   vertex/triangle, component, expansion, and nesting budgets remain enforced.
-- Extreme reference meshes use a bounded-memory clustered display proxy while
+- Reference previews default to at most 2.5 million displayed faces while
   retaining the complete source triangle mesh and spatial index for paint
-  selection, face fingerprints, and generation.
+  selection, face fingerprints, and generation. Larger models present an
+  explicit per-load choice between that high-detail proxy, a multi-gigabyte
+  all-faces preview, or cancellation.
 - Green paint is a strict allow-list for support contact.
 - Paint indices are fingerprinted, remapped when float32 coordinates collapse
   triangles, and handed to the engine with a minimal face-order-preserving 3MF.

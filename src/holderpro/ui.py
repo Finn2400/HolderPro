@@ -82,6 +82,7 @@ def require_pyside6() -> None:
 
 if QtWidgets is not None:
     from .preview import (
+        DEFAULT_PREVIEW_FACE_LIMIT,
         PAINT_MODE_BLOCKER,
         PAINT_MODE_ENFORCER,
         PAINT_MODE_ERASE,
@@ -156,7 +157,14 @@ if QtWidgets is not None:
             self._restore_settings()
 
             if initial_path is not None:
-                self.set_input_path(initial_path)
+                # Defer command-line model loading until after main() shows the
+                # window and enters Qt's event loop. Large-model consent dialogs
+                # otherwise have a hidden parent and can appear behind other
+                # applications or be resolved before the user sees them.
+                pending_path = Path(initial_path)
+                QtCore.QTimer.singleShot(
+                    0, lambda path=pending_path: self.set_input_path(path)
+                )
             if output_path is not None:
                 self.output_path_edit.setText(str(Path(output_path).expanduser()))
             if self._generate_fn is None and not self._settings.value(
@@ -948,7 +956,43 @@ if QtWidgets is not None:
                 from .mesh_io import load_reference_mesh
 
                 mesh = load_reference_mesh(model_path)
-                self.preview.load_mesh(mesh)
+                display_face_limit: int | None = DEFAULT_PREVIEW_FACE_LIMIT
+                if len(mesh.faces) > DEFAULT_PREVIEW_FACE_LIMIT:
+                    detail_box = QtWidgets.QMessageBox(self)
+                    detail_box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+                    detail_box.setWindowTitle("Very detailed model")
+                    detail_box.setText(
+                        f"This model contains {len(mesh.faces):,} faces."
+                    )
+                    detail_box.setInformativeText(
+                        f"HolderPro can display a {DEFAULT_PREVIEW_FACE_LIMIT:,}-face "
+                        "high-detail proxy while retaining every source face for "
+                        "painting and support generation.\n\nDisplaying every face "
+                        "may use several gigabytes of RAM and make posing, painting, "
+                        "or loading much slower."
+                    )
+                    proxy_button = detail_box.addButton(
+                        f"Use {DEFAULT_PREVIEW_FACE_LIMIT / 1_000_000:g}M preview",
+                        QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+                    )
+                    all_faces_button = detail_box.addButton(
+                        f"Use all {len(mesh.faces):,} faces",
+                        QtWidgets.QMessageBox.ButtonRole.ActionRole,
+                    )
+                    cancel_button = detail_box.addButton(
+                        QtWidgets.QMessageBox.StandardButton.Cancel
+                    )
+                    detail_box.setDefaultButton(proxy_button)
+                    detail_box.exec()
+                    clicked = detail_box.clickedButton()
+                    if clicked is cancel_button:
+                        self._set_status("Model loading cancelled.")
+                        return
+                    if clicked is all_faces_button:
+                        display_face_limit = None
+                self.preview.load_mesh(
+                    mesh, display_face_limit=display_face_limit
+                )
                 self._update_preview_pose()
                 self.preview.view_under_isometric()
             except Exception as exc:
@@ -965,9 +1009,15 @@ if QtWidgets is not None:
                 )
                 self.output_path_edit.setText(str(suggested))
                 self._output_was_edited = False
+            display_faces = self.preview.display_face_count
+            preview_detail = (
+                f" Displaying {display_faces:,} high-detail preview faces."
+                if display_faces and display_faces < len(mesh.faces)
+                else ""
+            )
             self._set_status(
-                f"Loaded {len(mesh.faces):,} faces. Purple marks low concave "
-                "undersides; green paint enforces support."
+                f"Loaded {len(mesh.faces):,} source faces.{preview_detail} "
+                "Purple marks low concave undersides; green paint enforces support."
             )
 
         def dragEnterEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
