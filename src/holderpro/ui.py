@@ -348,6 +348,20 @@ if QtWidgets is not None:
             self.clear_paint_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+X"))
             self.clear_paint_action.triggered.connect(self.preview.clear_paint)
             edit_menu.addAction(self.clear_paint_action)
+            self.remove_supports_action = QtGui.QAction(
+                "Remove generated supports from view", self
+            )
+            self.remove_supports_action.setShortcut(
+                QtGui.QKeySequence("Ctrl+Shift+Backspace")
+            )
+            self.remove_supports_action.setToolTip(
+                "Hide the generated stand while keeping the model, pose, and "
+                "support paint editable."
+            )
+            self.remove_supports_action.triggered.connect(
+                self._remove_generated_supports
+            )
+            edit_menu.addAction(self.remove_supports_action)
 
             view_menu = self.menuBar().addMenu("&View")
             self._view_actions: list[Any] = []
@@ -592,6 +606,17 @@ if QtWidgets is not None:
             clear_button.clicked.connect(self.preview.clear_paint)
             controls.addWidget(clear_button)
             self.clear_paint_button = clear_button
+            self.remove_supports_button = QtWidgets.QPushButton(
+                "Remove generated supports"
+            )
+            self.remove_supports_button.setToolTip(
+                "Remove the generated stand from this view. The model pose and "
+                "paint are kept so you can revise them and generate again."
+            )
+            self.remove_supports_button.clicked.connect(
+                self._remove_generated_supports
+            )
+            controls.addWidget(self.remove_supports_button)
             layout.addLayout(controls)
 
             legend = QtWidgets.QHBoxLayout()
@@ -885,6 +910,14 @@ if QtWidgets is not None:
         @QtCore.Slot()
         def _invalidate_generated_support(self, *_args: object) -> None:
             self.preview.clear_supports()
+
+        @QtCore.Slot()
+        def _remove_generated_supports(self) -> None:
+            self.preview.clear_supports()
+            self._set_status(
+                "Generated supports removed from the viewer. Model pose and "
+                "paint were kept; edit or repaint, then generate again."
+            )
 
         @QtCore.Slot()
         def _update_preview_pose(self, *_args: object) -> None:
@@ -1511,6 +1544,7 @@ if QtWidgets is not None:
             self.brush_radius_spin.setEnabled(not running)
             self.low_height_spin.setEnabled(not running)
             self.clear_paint_button.setEnabled(not running)
+            self.remove_supports_button.setEnabled(not running)
             self.enforcers_only_checkbox.setEnabled(False)
             self.slim_full_tip_checkbox.setEnabled(not running)
             self.network_base_checkbox.setEnabled(not running)
@@ -1522,6 +1556,7 @@ if QtWidgets is not None:
             for action in self._mode_actions:
                 action.setEnabled(not running)
             self.clear_paint_action.setEnabled(not running)
+            self.remove_supports_action.setEnabled(not running)
             pose_enabled = not running and not self._painting_locked
             for field in (
                 self.bottom_height_spin,
