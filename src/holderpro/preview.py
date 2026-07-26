@@ -32,6 +32,7 @@ try:  # Optional GUI dependencies; CLI imports must remain headless-safe.
     )
     from vtkmodules.vtkFiltersCore import (
         vtkPolyDataNormals,
+        vtkQuadricClustering,
         vtkQuadricDecimation,
         vtkTubeFilter,
     )
@@ -318,6 +319,8 @@ def triangle_faces_within_sphere(
     cell_locator: Any,
     point: np.ndarray,
     radius: float,
+    *,
+    faces: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return every triangle whose surface intersects a 3D brush sphere.
 
@@ -326,11 +329,22 @@ def triangle_faces_within_sphere(
     brush includes long or off-centre faces whose surface is within its radius.
     """
 
-    triangles = np.asarray(triangles, dtype=float)
+    geometry = np.asarray(triangles, dtype=float)
+    face_indices = None if faces is None else np.asarray(faces, dtype=np.int64)
     point = np.asarray(point, dtype=float)
     radius = float(radius)
-    if triangles.ndim != 3 or triangles.shape[1:] != (3, 3):
-        raise ValueError("triangles must have shape (n, 3, 3)")
+    if face_indices is None:
+        if geometry.ndim != 3 or geometry.shape[1:] != (3, 3):
+            raise ValueError("triangles must have shape (n, 3, 3)")
+    elif (
+        geometry.ndim != 2
+        or geometry.shape[1:] != (3,)
+        or face_indices.ndim != 2
+        or face_indices.shape[1:] != (3,)
+        or np.any(face_indices < 0)
+        or np.any(face_indices >= len(geometry))
+    ):
+        raise ValueError("vertices and faces must define indexed triangles")
     if point.shape != (3,) or not np.isfinite(point).all():
         raise ValueError("brush point must be a finite 3D position")
     if not np.isfinite(radius) or radius <= 0.0:
@@ -364,34 +378,42 @@ def triangle_faces_within_sphere(
     selected = [
         int(face)
         for face in candidates
-        if point_triangle_distance_squared(point, triangles[face]) <= radius_sq + 1e-12
+        if point_triangle_distance_squared(
+            point,
+            (
+                geometry[face]
+                if face_indices is None
+                else geometry[face_indices[face]]
+            ),
+        )
+        <= radius_sq + 1e-12
     ]
     return np.asarray(selected, dtype=np.int64)
 
 
-def _polydata_from_mesh(mesh: trimesh.Trimesh) -> Any:
+def _polydata_from_mesh(mesh: trimesh.Trimesh, *, deep: bool = True) -> Any:
     """Create VTK triangle polydata without relying on PyVista."""
 
     require_preview_dependencies()
     vertices = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
     faces = np.ascontiguousarray(mesh.faces, dtype=np.int64)
     points = vtkPoints()
-    points.SetData(numpy_to_vtk(vertices, deep=True))
+    points.SetData(numpy_to_vtk(vertices, deep=deep))
     polydata = vtkPolyData()
     polydata.SetPoints(points)
-    polydata.SetPolys(_vtk_triangle_cells(faces))
+    polydata.SetPolys(_vtk_triangle_cells(faces, deep=deep))
     return polydata
 
 
-def _vtk_triangle_cells(faces: np.ndarray) -> Any:
+def _vtk_triangle_cells(faces: np.ndarray, *, deep: bool = True) -> Any:
     """Create VTK's modern offsets/connectivity representation for triangles."""
 
     faces = np.ascontiguousarray(faces, dtype=np.int64)
     offsets = np.arange(0, (len(faces) + 1) * 3, 3, dtype=np.int64)
     cells = vtkCellArray()
     cells.SetData(
-        numpy_to_vtkIdTypeArray(offsets, deep=True),
-        numpy_to_vtkIdTypeArray(faces.ravel(), deep=True),
+        numpy_to_vtkIdTypeArray(offsets, deep=deep),
+        numpy_to_vtkIdTypeArray(faces.ravel(), deep=deep),
     )
     return cells
 
@@ -403,7 +425,9 @@ def build_triangle_locator(mesh: trimesh.Trimesh) -> tuple[Any, Any]:
     which is why callers retain both objects.
     """
 
-    polydata = _polydata_from_mesh(mesh)
+    # The exact source mesh remains owned by the preview for the lifetime of
+    # the locator, so VTK can safely share its large coordinate/index buffers.
+    polydata = _polydata_from_mesh(mesh, deep=False)
     locator = vtkStaticCellLocator()
     locator.SetDataSet(polydata)
     locator.BuildLocator()
@@ -444,6 +468,52 @@ def decimate_mesh_for_preview(
     decimator.VolumePreservationOn()
     decimator.Update()
     return _mesh_from_polydata(decimator.GetOutput())
+
+
+def _decimate_polydata_for_preview(
+    polydata: Any, *, source_face_count: int, target_face_count: int
+) -> trimesh.Trimesh:
+    """Decimate an already-built source polydata without copying it again."""
+
+    target = max(4, int(target_face_count))
+    if source_face_count <= target:
+        return _mesh_from_polydata(polydata)
+    decimator = vtkQuadricDecimation()
+    decimator.SetInputData(polydata)
+    decimator.SetTargetReduction(1.0 - target / float(source_face_count))
+    decimator.VolumePreservationOn()
+    decimator.Update()
+    return _mesh_from_polydata(decimator.GetOutput())
+
+
+def _cluster_polydata_for_preview(
+    polydata: Any, *, target_face_count: int
+) -> trimesh.Trimesh:
+    """Build a bounded-memory proxy for an extreme-size source polydata.
+
+    Edge-collapse decimation constructs a global edge priority queue and can
+    consume several times the source size. Quadric clustering instead assigns
+    source vertices to a fixed 3-D grid, so its working set is controlled by
+    the requested proxy density.
+    """
+
+    bounds = np.asarray(polydata.GetBounds(), dtype=float).reshape((3, 2))
+    extents = np.diff(bounds, axis=1).ravel()
+    longest = float(extents.max())
+    if not np.isfinite(extents).all() or longest <= 0.0:
+        raise ValueError("preview source has invalid bounds")
+    effective = np.maximum(extents, longest * 0.01)
+    target_vertices = max(1_000, int(target_face_count) // 2)
+    scale = (target_vertices / float(np.prod(effective))) ** (1.0 / 3.0)
+    divisions = np.maximum(2, np.ceil(effective * scale).astype(np.int64))
+
+    clustering = vtkQuadricClustering()
+    clustering.SetInputData(polydata)
+    clustering.SetNumberOfXDivisions(int(divisions[0]))
+    clustering.SetNumberOfYDivisions(int(divisions[1]))
+    clustering.SetNumberOfZDivisions(int(divisions[2]))
+    clustering.Update()
+    return _mesh_from_polydata(clustering.GetOutput())
 
 
 def merged_topology_copy(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -1298,7 +1368,9 @@ if QtWidgets is not None:
         def load_mesh(self, mesh: trimesh.Trimesh) -> None:
             if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):
                 raise ValueError("The preview model contains no triangle faces")
-            self._mesh = mesh.copy()
+            # The loader hands ownership of this mesh to the preview. Keeping
+            # it directly avoids a ~450 MB duplicate for 12-million-face 3MFs.
+            self._mesh = mesh
             self.clear_supports(render=False)
             self._fingerprint = mesh_fingerprint(self._mesh)
             self._paint_states = np.zeros(len(mesh.faces), dtype=np.uint8)
@@ -1309,31 +1381,60 @@ if QtWidgets is not None:
             # Weld only the rendering/topology copy. Source face order and the
             # exact export mesh remain untouched, while STL triangle soup no
             # longer forces millions of duplicate points through every drag.
-            topology_mesh = merged_topology_copy(self._mesh)
-            self._pose_bounds_vertices_source = np.asarray(
-                topology_mesh.vertices, dtype=float
-            )
-
-            # Concavity does not change under rigid pose rotations. Computing
-            # it on the welded topology also restores real adjacency for STL.
-            self._concavity = face_concavity(topology_mesh)
-            self._center_of_mass_source = self._calculate_center_of_mass(self._mesh)
-
             # Keep ordinary and moderately dense reference models at their
             # original resolution. Besides improving the view, this makes each
             # visible/pickable triangle correspond directly to a source face.
             # Only protect the interactive renderer from exceptionally large
             # meshes, and retain far more detail when that safeguard is needed.
-            if len(topology_mesh.faces) > 1_750_000:
-                self._display_mesh = decimate_mesh_for_preview(
-                    topology_mesh,
-                    target_face_count=1_250_000,
+            if len(self._mesh.faces) > 1_750_000:
+                self._pose_bounds_vertices_source = np.asarray(
+                    self._mesh.vertices, dtype=float
+                )
+                # Registering every proxy face back to the exact paint mesh is
+                # intentionally precise but uses one spatial query per face.
+                # A half-million-face proxy remains visually dense for an
+                # extreme 10M+ triangle scientific model while avoiding several
+                # minutes of startup work. The exact source mesh and locator
+                # remain untouched for brush selection and generation.
+                display_target = (
+                    500_000 if len(self._mesh.faces) > 8_000_000 else 1_250_000
+                )
+                self._display_mesh = (
+                    _cluster_polydata_for_preview(
+                        self._source_polydata,
+                        target_face_count=display_target,
+                    )
+                    if len(self._mesh.faces) > 8_000_000
+                    else _decimate_polydata_for_preview(
+                        self._source_polydata,
+                        source_face_count=len(self._mesh.faces),
+                        target_face_count=display_target,
+                    )
                 )
                 self._display_to_source = closest_source_faces(
                     self._cell_locator,
                     self._display_mesh.triangles_center,
                 )
+                # Only displayed faces need a concavity color. Keep the source
+                # index-sized array for the existing paint mapping, but avoid
+                # constructing full-resolution face adjacency.
+                self._concavity = np.zeros(len(self._mesh.faces), dtype=np.float32)
+                self._concavity[self._display_to_source] = face_concavity(
+                    self._display_mesh
+                )
+                self._center_of_mass_source = self._calculate_center_of_mass(
+                    self._display_mesh
+                )
             else:
+                topology_mesh = merged_topology_copy(self._mesh)
+                self._pose_bounds_vertices_source = np.asarray(
+                    topology_mesh.vertices, dtype=float
+                )
+                # Concavity does not change under rigid pose rotations.
+                self._concavity = face_concavity(topology_mesh)
+                self._center_of_mass_source = self._calculate_center_of_mass(
+                    self._mesh
+                )
                 self._display_mesh = topology_mesh
                 self._display_to_source = np.arange(
                     len(self._mesh.faces), dtype=np.int64
@@ -1854,10 +1955,11 @@ if QtWidgets is not None:
                 @ self._source_hit_transform.T
             )[:3]
             selected = triangle_faces_within_sphere(
-                self._mesh.triangles,
+                np.asarray(self._mesh.vertices, dtype=float),
                 self._cell_locator,
                 source_hit,
                 self.brush_radius_mm,
+                faces=np.asarray(self._mesh.faces, dtype=np.int64),
             )
             if seed not in selected:
                 selected = np.append(selected, seed)

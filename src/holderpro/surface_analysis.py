@@ -30,13 +30,20 @@ class SurfaceAnalysis:
 def mesh_fingerprint(mesh: trimesh.Trimesh) -> str:
     """Return a stable digest tying painted face indices to one loaded mesh."""
 
-    vertices = np.ascontiguousarray(mesh.vertices, dtype="<f8")
-    faces = np.ascontiguousarray(mesh.faces, dtype="<u8")
     digest = hashlib.sha256()
+    vertices = np.asarray(mesh.vertices)
+    faces = np.asarray(mesh.faces)
     digest.update(np.asarray(vertices.shape, dtype="<u8").tobytes())
-    digest.update(vertices.tobytes())
+    # Hash bounded row chunks. Converting an entire multi-million-face model
+    # to canonical little-endian dtypes can otherwise create hundreds of
+    # megabytes of temporary arrays before preview construction even begins.
+    for start in range(0, len(vertices), 65_536):
+        chunk = np.ascontiguousarray(vertices[start : start + 65_536], dtype="<f8")
+        digest.update(chunk.tobytes())
     digest.update(np.asarray(faces.shape, dtype="<u8").tobytes())
-    digest.update(faces.tobytes())
+    for start in range(0, len(faces), 65_536):
+        chunk = np.ascontiguousarray(faces[start : start + 65_536], dtype="<u8")
+        digest.update(chunk.tobytes())
     return digest.hexdigest()
 
 

@@ -57,8 +57,13 @@ reader compatibility policy, fixtures, and release note.
 ### Geometry contract
 
 - 3MF Core/Production geometry is loaded by HolderPro's bounded stdlib/NumPy
-  reader, so core installs do not acquire trimesh's optional NetworkX/lxml
-  dependency path.
+  streaming reader, so even multi-gigabyte model XML is not retained as an
+  element tree and core installs do not acquire trimesh's optional
+  NetworkX/lxml dependency path. Explicit archive, compression-ratio,
+  vertex/triangle, component, expansion, and nesting budgets remain enforced.
+- Extreme reference meshes use a bounded-memory clustered display proxy while
+  retaining the complete source triangle mesh and spatial index for paint
+  selection, face fingerprints, and generation.
 - Green paint is a strict allow-list for support contact.
 - Paint indices are fingerprinted, remapped when float32 coordinates collapse
   triangles, and handed to the engine with a minimal face-order-preserving 3MF.

@@ -8,8 +8,10 @@ Python standard library and NumPy.
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 import io
+import math
 from pathlib import Path, PurePosixPath
 from typing import IO
 from urllib.parse import unquote
@@ -30,18 +32,22 @@ _UNIT_TO_MM = {
 }
 _RELATIONSHIP_TYPE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 _MAX_ARCHIVE_MEMBERS = 4096
-_MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
-_MAX_MODEL_XML_BYTES = 256 * 1024 * 1024
+# Large, densely triangulated scientific models can legitimately contain
+# several gigabytes of repetitive XML while remaining a few hundred megabytes
+# on disk. Model members are parsed as a bounded stream below, so these limits
+# guard unreasonable work without requiring the complete XML in memory.
+_MAX_ARCHIVE_BYTES = 8 * 1024 * 1024 * 1024
+_MAX_MODEL_XML_BYTES = 4 * 1024 * 1024 * 1024
 _MAX_RELATIONSHIP_XML_BYTES = 4 * 1024 * 1024
 _MAX_COMPRESSION_RATIO = 1000.0
 _MAX_OBJECTS = 100_000
 _MAX_COMPONENTS = 500_000
-_MAX_SOURCE_VERTICES = 5_000_000
-_MAX_SOURCE_FACES = 5_000_000
+_MAX_SOURCE_VERTICES = 10_000_000
+_MAX_SOURCE_FACES = 20_000_000
 _MAX_EXPANDED_INSTANCES = 100_000
 _MAX_COMPONENT_DEPTH = 128
-_MAX_OUTPUT_VERTICES = 5_000_000
-_MAX_OUTPUT_FACES = 5_000_000
+_MAX_OUTPUT_VERTICES = 10_000_000
+_MAX_OUTPUT_FACES = 20_000_000
 
 
 class ThreeMFError(ValueError):
@@ -174,55 +180,6 @@ def _transform(attributes: dict[str, str], unit_scale: float) -> np.ndarray:
     return matrix
 
 
-def _mesh_arrays(
-    mesh: ElementTree.Element, unit_scale: float, budget: _Budget
-) -> tuple[np.ndarray, np.ndarray]:
-    vertices_element = next(
-        (item for item in mesh if _local_name(item.tag) == "vertices"), None
-    )
-    triangles_element = next(
-        (item for item in mesh if _local_name(item.tag) == "triangles"), None
-    )
-    if vertices_element is None or triangles_element is None:
-        raise ThreeMFError("a 3MF mesh must contain vertices and triangles")
-
-    try:
-        vertex_values = [
-            f"{item.attrib['x']} {item.attrib['y']} {item.attrib['z']}"
-            for item in vertices_element
-            if _local_name(item.tag) == "vertex"
-        ]
-        face_values = [
-            f"{item.attrib['v1']} {item.attrib['v2']} {item.attrib['v3']}"
-            for item in triangles_element
-            if _local_name(item.tag) == "triangle"
-        ]
-        vertex_flat = np.fromstring(
-            " ".join(vertex_values), dtype=np.float64, sep=" "
-        )
-        face_flat = np.fromstring(" ".join(face_values), dtype=np.int64, sep=" ")
-    except (KeyError, ValueError) as exc:
-        raise ThreeMFError("3MF mesh contains malformed vertex or triangle data") from exc
-    if vertex_flat.size != len(vertex_values) * 3 or face_flat.size != len(face_values) * 3:
-        raise ThreeMFError("3MF mesh contains malformed vertex or triangle data")
-    budget.source_vertices += len(vertex_values)
-    budget.source_faces += len(face_values)
-    if budget.source_vertices > _MAX_SOURCE_VERTICES:
-        raise ThreeMFError("3MF source exceeds the vertex limit")
-    if budget.source_faces > _MAX_SOURCE_FACES:
-        raise ThreeMFError("3MF source exceeds the triangle limit")
-    vertices = vertex_flat.reshape((-1, 3))
-    faces = face_flat.reshape((-1, 3))
-    if not len(vertices) or not len(faces):
-        raise ThreeMFError("3MF mesh contains no triangle geometry")
-    vertices *= unit_scale
-    if not np.all(np.isfinite(vertices)):
-        raise ThreeMFError("3MF mesh contains non-finite vertex coordinates")
-    if np.any(faces < 0) or np.any(faces >= len(vertices)):
-        raise ThreeMFError("3MF mesh contains an out-of-range vertex index")
-    return vertices, faces
-
-
 def _path_attribute(attributes: dict[str, str]) -> str | None:
     for name, value in attributes.items():
         if _local_name(name) == "path":
@@ -231,6 +188,14 @@ def _path_attribute(attributes: dict[str, str]) -> str | None:
 
 
 def _parse_model(archive: ZipFile, member: str, budget: _Budget) -> _Model:
+    """Parse one model member with memory bounded by retained mesh arrays.
+
+    ``ElementTree.parse`` retains every XML element. A multi-million-triangle
+    3MF can therefore need many times its already-large uncompressed XML size
+    in RAM. ``iterparse`` lets us discard each vertex/triangle element as soon
+    as its numeric fields have been copied into compact native arrays.
+    """
+
     info = archive.getinfo(member)
     if info.file_size > _MAX_MODEL_XML_BYTES:
         raise ThreeMFError(f"3MF model XML exceeds the size limit: {member}")
@@ -238,83 +203,182 @@ def _parse_model(archive: ZipFile, member: str, budget: _Budget) -> _Model:
         stream = archive.open(member)
     except KeyError as exc:
         raise ThreeMFError(f"3MF component model is missing: {member}") from exc
-    with stream:
-        try:
-            tree = ElementTree.parse(_DTDRejectingStream(stream))
-        except ElementTree.ParseError as exc:
-            raise ThreeMFError(f"invalid XML in 3MF model {member}: {exc}") from exc
-
-    root = tree.getroot()
-    unit = root.attrib.get("unit", "millimeter").lower()
-    if unit not in _UNIT_TO_MM:
-        raise ThreeMFError(f"unsupported 3MF model unit: {unit!r}")
-    scale = _UNIT_TO_MM[unit]
     objects: dict[str, _Object] = {}
     build: list[_Component] = []
+    scale: float | None = None
+    root_element: ElementTree.Element | None = None
+    element_stack: list[ElementTree.Element] = []
+    current_object_id: str | None = None
+    current_vertices: list[np.ndarray] = []
+    current_faces: list[np.ndarray] = []
+    current_components: list[_Component] = []
+    vertex_buffer: array[float] | None = None
+    face_buffer: array[int] | None = None
 
-    for element in root.iter():
-        kind = _local_name(element.tag)
-        if kind == "object":
-            object_id = element.attrib.get("id")
-            if not object_id or object_id in objects:
-                raise ThreeMFError("3MF objects must have unique non-empty IDs")
-            budget.objects += 1
-            if budget.objects > _MAX_OBJECTS:
-                raise ThreeMFError("3MF source exceeds the object limit")
-            vertices: list[np.ndarray] = []
-            faces: list[np.ndarray] = []
-            components: list[_Component] = []
-            for child in element:
-                child_kind = _local_name(child.tag)
-                if child_kind == "mesh":
-                    vertex_array, face_array = _mesh_arrays(child, scale, budget)
-                    vertices.append(vertex_array)
-                    faces.append(face_array)
-                elif child_kind == "components":
-                    for component in child:
-                        if _local_name(component.tag) != "component":
-                            continue
-                        target = component.attrib.get("objectid")
-                        if not target:
-                            raise ThreeMFError("3MF component is missing objectid")
-                        budget.components += 1
-                        if budget.components > _MAX_COMPONENTS:
-                            raise ThreeMFError("3MF source exceeds the component limit")
-                        component_path = _path_attribute(component.attrib)
-                        target_member = (
-                            _package_member(component_path, relative_to=member)
-                            if component_path
-                            else member
-                        )
-                        components.append(
-                            _Component(
-                                target_member,
-                                target,
-                                _transform(component.attrib, scale),
-                            )
-                        )
-            if not vertices and not components:
-                raise ThreeMFError(f"3MF object {object_id} has no mesh or components")
-            objects[object_id] = _Object(
-                tuple(vertices), tuple(faces), tuple(components)
+    with stream:
+        try:
+            events = ElementTree.iterparse(
+                _DTDRejectingStream(stream), events=("start", "end")
             )
-        elif kind == "build":
-            for item in element:
-                if _local_name(item.tag) != "item":
+            for event, element in events:
+                kind = _local_name(element.tag)
+                if root_element is None:
+                    if event != "start" or kind != "model":
+                        raise ThreeMFError(f"3MF model member is not a model: {member}")
+                    root_element = element
+                    element_stack.append(element)
+                    unit = element.attrib.get("unit", "millimeter").lower()
+                    if unit not in _UNIT_TO_MM:
+                        raise ThreeMFError(f"unsupported 3MF model unit: {unit!r}")
+                    scale = _UNIT_TO_MM[unit]
                     continue
-                target = item.attrib.get("objectid")
-                if not target:
-                    raise ThreeMFError("3MF build item is missing objectid")
-                budget.components += 1
-                if budget.components > _MAX_COMPONENTS:
-                    raise ThreeMFError("3MF source exceeds the component limit")
-                item_path = _path_attribute(item.attrib)
-                target_member = (
-                    _package_member(item_path, relative_to=member)
-                    if item_path
-                    else member
-                )
-                build.append(_Component(target_member, target, _transform(item.attrib, scale)))
+                if scale is None:  # pragma: no cover - initialized with root
+                    raise ThreeMFError(f"3MF model has no unit scale: {member}")
+
+                if event == "start":
+                    element_stack.append(element)
+                    if kind == "object":
+                        object_id = element.attrib.get("id")
+                        if (
+                            not object_id
+                            or object_id in objects
+                            or current_object_id is not None
+                        ):
+                            raise ThreeMFError(
+                                "3MF objects must have unique non-empty IDs"
+                            )
+                        budget.objects += 1
+                        if budget.objects > _MAX_OBJECTS:
+                            raise ThreeMFError("3MF source exceeds the object limit")
+                        current_object_id = object_id
+                        current_vertices = []
+                        current_faces = []
+                        current_components = []
+                    elif kind == "mesh":
+                        if current_object_id is None or vertex_buffer is not None:
+                            raise ThreeMFError("3MF mesh is outside a model object")
+                        vertex_buffer = array("d")
+                        face_buffer = array("q")
+                    continue
+
+                if kind == "vertex" and vertex_buffer is not None:
+                    try:
+                        coordinates = (
+                            float(element.attrib["x"]) * scale,
+                            float(element.attrib["y"]) * scale,
+                            float(element.attrib["z"]) * scale,
+                        )
+                    except (KeyError, ValueError, OverflowError) as exc:
+                        raise ThreeMFError(
+                            "3MF mesh contains malformed vertex data"
+                        ) from exc
+                    if not all(math.isfinite(value) for value in coordinates):
+                        raise ThreeMFError(
+                            "3MF mesh contains non-finite vertex coordinates"
+                        )
+                    vertex_buffer.extend(coordinates)
+                    budget.source_vertices += 1
+                    if budget.source_vertices > _MAX_SOURCE_VERTICES:
+                        raise ThreeMFError("3MF source exceeds the vertex limit")
+                elif kind == "triangle" and face_buffer is not None:
+                    try:
+                        indices = (
+                            int(element.attrib["v1"]),
+                            int(element.attrib["v2"]),
+                            int(element.attrib["v3"]),
+                        )
+                    except (KeyError, ValueError, OverflowError) as exc:
+                        raise ThreeMFError(
+                            "3MF mesh contains malformed triangle data"
+                        ) from exc
+                    face_buffer.extend(indices)
+                    budget.source_faces += 1
+                    if budget.source_faces > _MAX_SOURCE_FACES:
+                        raise ThreeMFError("3MF source exceeds the triangle limit")
+                elif kind == "mesh":
+                    if vertex_buffer is None or face_buffer is None:
+                        raise ThreeMFError("3MF mesh has invalid element nesting")
+                    vertices = np.frombuffer(vertex_buffer, dtype=np.float64).reshape(
+                        (-1, 3)
+                    )
+                    faces = np.frombuffer(face_buffer, dtype=np.int64).reshape((-1, 3))
+                    if not len(vertices) or not len(faces):
+                        raise ThreeMFError("3MF mesh contains no triangle geometry")
+                    if np.any(faces < 0) or np.any(faces >= len(vertices)):
+                        raise ThreeMFError(
+                            "3MF mesh contains an out-of-range vertex index"
+                        )
+                    current_vertices.append(vertices)
+                    current_faces.append(faces)
+                    vertex_buffer = None
+                    face_buffer = None
+                elif kind == "component" and current_object_id is not None:
+                    target = element.attrib.get("objectid")
+                    if not target:
+                        raise ThreeMFError("3MF component is missing objectid")
+                    budget.components += 1
+                    if budget.components > _MAX_COMPONENTS:
+                        raise ThreeMFError("3MF source exceeds the component limit")
+                    component_path = _path_attribute(element.attrib)
+                    target_member = (
+                        _package_member(component_path, relative_to=member)
+                        if component_path
+                        else member
+                    )
+                    current_components.append(
+                        _Component(
+                            target_member,
+                            target,
+                            _transform(element.attrib, scale),
+                        )
+                    )
+                elif kind == "object":
+                    if current_object_id is None:
+                        raise ThreeMFError("3MF object has invalid element nesting")
+                    if not current_vertices and not current_components:
+                        raise ThreeMFError(
+                            f"3MF object {current_object_id} has no mesh or components"
+                        )
+                    objects[current_object_id] = _Object(
+                        tuple(current_vertices),
+                        tuple(current_faces),
+                        tuple(current_components),
+                    )
+                    current_object_id = None
+                    current_vertices = []
+                    current_faces = []
+                    current_components = []
+                elif kind == "item":
+                    target = element.attrib.get("objectid")
+                    if not target:
+                        raise ThreeMFError("3MF build item is missing objectid")
+                    budget.components += 1
+                    if budget.components > _MAX_COMPONENTS:
+                        raise ThreeMFError("3MF source exceeds the component limit")
+                    item_path = _path_attribute(element.attrib)
+                    target_member = (
+                        _package_member(item_path, relative_to=member)
+                        if item_path
+                        else member
+                    )
+                    build.append(
+                        _Component(
+                            target_member,
+                            target,
+                            _transform(element.attrib, scale),
+                        )
+                    )
+
+                element.clear()
+                # Remove the processed element from its parent as well as
+                # clearing its contents. Merely clearing would leave millions
+                # of empty vertex objects attached until </vertices>.
+                if len(element_stack) > 1:
+                    element_stack[-2].remove(element)
+                if element_stack:
+                    element_stack.pop()
+        except ElementTree.ParseError as exc:
+            raise ThreeMFError(f"invalid XML in 3MF model {member}: {exc}") from exc
 
     return _Model(objects=objects, build=tuple(build))
 

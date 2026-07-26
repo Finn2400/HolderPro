@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import sys
 
 import numpy as np
@@ -91,3 +92,16 @@ def test_mesh_fingerprint_tracks_face_index_identity() -> None:
 
     assert mesh_fingerprint(mesh) == mesh_fingerprint(same)
     assert mesh_fingerprint(mesh) != mesh_fingerprint(reordered)
+
+
+def test_chunked_mesh_fingerprint_preserves_existing_digest_format() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=3)
+    vertices = np.ascontiguousarray(mesh.vertices, dtype="<f8")
+    faces = np.ascontiguousarray(mesh.faces, dtype="<u8")
+    legacy = hashlib.sha256()
+    legacy.update(np.asarray(vertices.shape, dtype="<u8").tobytes())
+    legacy.update(vertices.tobytes())
+    legacy.update(np.asarray(faces.shape, dtype="<u8").tobytes())
+    legacy.update(faces.tobytes())
+
+    assert mesh_fingerprint(mesh) == legacy.hexdigest()
