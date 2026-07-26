@@ -1034,7 +1034,7 @@ if QtWidgets is not None:
                 from .mesh_io import load_reference_mesh
 
                 mesh = load_reference_mesh(model_path)
-                display_face_limit: int | None = DEFAULT_PREVIEW_FACE_LIMIT
+                display_face_limit: int | None = None
                 if len(mesh.faces) > DEFAULT_PREVIEW_FACE_LIMIT:
                     detail_box = QtWidgets.QMessageBox(self)
                     detail_box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
@@ -1043,31 +1043,33 @@ if QtWidgets is not None:
                         f"This model contains {len(mesh.faces):,} faces."
                     )
                     detail_box.setInformativeText(
-                        f"HolderPro can display a {DEFAULT_PREVIEW_FACE_LIMIT:,}-face "
-                        "high-detail proxy while retaining every source face for "
-                        "painting and support generation.\n\nDisplaying every face "
-                        "may use several gigabytes of RAM and make posing, painting, "
-                        "or loading much slower."
+                        "HolderPro will display every source triangle by default. "
+                        f"A reduced {DEFAULT_PREVIEW_FACE_LIMIT:,}-face proxy is "
+                        "available if memory or interaction becomes a problem; "
+                        "support generation always retains every source face.\n\n"
+                        "Full detail may use several gigabytes of RAM and make "
+                        "posing, painting, or loading much slower."
                     )
                     proxy_button = detail_box.addButton(
-                        f"Use {DEFAULT_PREVIEW_FACE_LIMIT / 1_000_000:g}M preview",
-                        QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+                        f"Use reduced {DEFAULT_PREVIEW_FACE_LIMIT / 1_000_000:g}M "
+                        "preview",
+                        QtWidgets.QMessageBox.ButtonRole.ActionRole,
                     )
                     all_faces_button = detail_box.addButton(
                         f"Use all {len(mesh.faces):,} faces",
-                        QtWidgets.QMessageBox.ButtonRole.ActionRole,
+                        QtWidgets.QMessageBox.ButtonRole.AcceptRole,
                     )
                     cancel_button = detail_box.addButton(
                         QtWidgets.QMessageBox.StandardButton.Cancel
                     )
-                    detail_box.setDefaultButton(proxy_button)
+                    detail_box.setDefaultButton(all_faces_button)
                     detail_box.exec()
                     clicked = detail_box.clickedButton()
                     if clicked is cancel_button:
                         self._set_status("Model loading cancelled.")
                         return
-                    if clicked is all_faces_button:
-                        display_face_limit = None
+                    if clicked is proxy_button:
+                        display_face_limit = DEFAULT_PREVIEW_FACE_LIMIT
                 self.preview.load_mesh(
                     mesh, display_face_limit=display_face_limit
                 )

@@ -1379,7 +1379,7 @@ if QtWidgets is not None:
             self,
             mesh: trimesh.Trimesh,
             *,
-            display_face_limit: int | None = DEFAULT_PREVIEW_FACE_LIMIT,
+            display_face_limit: int | None = None,
         ) -> None:
             if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):
                 raise ValueError("The preview model contains no triangle faces")
@@ -1398,11 +1398,10 @@ if QtWidgets is not None:
             # Weld only the rendering/topology copy. Source face order and the
             # exact export mesh remain untouched, while STL triangle soup no
             # longer forces millions of duplicate points through every drag.
-            # Keep ordinary and moderately dense reference models at their
-            # original resolution. Besides improving the view, this makes each
-            # visible/pickable triangle correspond directly to a source face.
-            # Only protect the interactive renderer from exceptionally large
-            # meshes, and retain far more detail when that safeguard is needed.
+            # Full source resolution is the default. Besides improving the
+            # view, this makes each visible/pickable triangle correspond
+            # directly to a source face. A reduced proxy is created only when
+            # a caller explicitly supplies a display face limit.
             use_proxy = (
                 display_face_limit is not None
                 and len(self._mesh.faces) > display_face_limit
@@ -1445,10 +1444,9 @@ if QtWidgets is not None:
                     self._display_mesh
                 )
             elif len(self._mesh.faces) > 1_750_000:
-                # Explicit high-memory mode: render and analyze every source
-                # face. The confirmation dialog in the desktop UI makes this
-                # opt-in because per-face colors, normals, centers, and
-                # adjacency can consume several gigabytes.
+                # Full-detail mode: render and analyze every source face.
+                # Per-face colors, normals, centers, and adjacency may consume
+                # several gigabytes for exceptionally detailed models.
                 self._pose_bounds_vertices_source = np.asarray(
                     self._mesh.vertices, dtype=float
                 )
