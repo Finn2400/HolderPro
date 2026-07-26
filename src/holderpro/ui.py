@@ -236,9 +236,15 @@ if QtWidgets is not None:
                 self.base_thickness_spin,
                 self.base_beam_width_spin,
                 self.base_node_diameter_spin,
+                self.connectivity_repair_reach_spin,
+                self.connectivity_bridge_diameter_spin,
+                self.connectivity_repair_passes_spin,
             ):
                 field.valueChanged.connect(self._invalidate_generated_support)
             self.network_base_checkbox.toggled.connect(
+                self._invalidate_generated_support
+            )
+            self.connectivity_repair_checkbox.toggled.connect(
                 self._invalidate_generated_support
             )
             self.output_path_edit.textEdited.connect(
@@ -390,6 +396,9 @@ if QtWidgets is not None:
                 "baseThickness": self.base_thickness_spin,
                 "baseBeamWidth": self.base_beam_width_spin,
                 "baseNodeDiameter": self.base_node_diameter_spin,
+                "connectivityRepairReach": self.connectivity_repair_reach_spin,
+                "connectivityBridgeDiameter": self.connectivity_bridge_diameter_spin,
+                "connectivityRepairPasses": self.connectivity_repair_passes_spin,
                 "brushRadius": self.brush_radius_spin,
             }
             for name, field in fields.items():
@@ -407,6 +416,13 @@ if QtWidgets is not None:
                     pass
             self.network_base_checkbox.setChecked(
                 bool(self._settings.value("generation/singleTrunk", True, bool))
+            )
+            self.connectivity_repair_checkbox.setChecked(
+                bool(
+                    self._settings.value(
+                        "generation/connectivityRepair", True, bool
+                    )
+                )
             )
             self.slim_full_tip_checkbox.setChecked(
                 bool(self._settings.value("generation/slimFullTip", False, bool))
@@ -429,12 +445,19 @@ if QtWidgets is not None:
                 "baseThickness": self.base_thickness_spin,
                 "baseBeamWidth": self.base_beam_width_spin,
                 "baseNodeDiameter": self.base_node_diameter_spin,
+                "connectivityRepairReach": self.connectivity_repair_reach_spin,
+                "connectivityBridgeDiameter": self.connectivity_bridge_diameter_spin,
+                "connectivityRepairPasses": self.connectivity_repair_passes_spin,
                 "brushRadius": self.brush_radius_spin,
             }
             for name, field in fields.items():
                 self._settings.setValue(f"generation/{name}", field.value())
             self._settings.setValue(
                 "generation/singleTrunk", self.network_base_checkbox.isChecked()
+            )
+            self._settings.setValue(
+                "generation/connectivityRepair",
+                self.connectivity_repair_checkbox.isChecked(),
             )
             self._settings.setValue(
                 "generation/slimFullTip", self.slim_full_tip_checkbox.isChecked()
@@ -760,7 +783,44 @@ if QtWidgets is not None:
             form.addRow("Taper height", self.base_thickness_spin)
             form.addRow("Blob margin", self.base_beam_width_spin)
             form.addRow("Root lobe diameter", self.base_node_diameter_spin)
+            self.connectivity_repair_checkbox = QtWidgets.QCheckBox(
+                "Auto-repair detached pieces"
+            )
+            self.connectivity_repair_checkbox.setChecked(True)
+            self.connectivity_repair_checkbox.setToolTip(
+                "Safely retry disconnected results by adding small rounded webs "
+                "between layer regions. Printable single-component validation "
+                "still remains required."
+            )
+            self.connectivity_repair_reach_spin = _number_field(
+                0.05, 20.0, 5.0, step=0.25, suffix=" mm", decimals=2
+            )
+            self.connectivity_repair_reach_spin.setToolTip(
+                "Maximum gap the final repair pass may bridge. Earlier passes "
+                "start smaller and increase gradually."
+            )
+            self.connectivity_bridge_diameter_spin = _number_field(
+                0.2, 10.0, 1.2, step=0.2, suffix=" mm", decimals=2
+            )
+            self.connectivity_bridge_diameter_spin.setToolTip(
+                "Thickness of rounded repair webs at the final pass."
+            )
+            self.connectivity_repair_passes_spin = QtWidgets.QSpinBox()
+            self.connectivity_repair_passes_spin.setRange(1, 10)
+            self.connectivity_repair_passes_spin.setValue(4)
+            self.connectivity_repair_passes_spin.setToolTip(
+                "Number of progressively stronger repair attempts."
+            )
+            form.addRow("Repair", self.connectivity_repair_checkbox)
+            form.addRow("Repair reach", self.connectivity_repair_reach_spin)
+            form.addRow(
+                "Bridge diameter", self.connectivity_bridge_diameter_spin
+            )
+            form.addRow("Repair passes", self.connectivity_repair_passes_spin)
             self.network_base_checkbox.toggled.connect(self._set_base_controls_enabled)
+            self.connectivity_repair_checkbox.toggled.connect(
+                self._set_connectivity_controls_enabled
+            )
             self._slim_full_tip_previous: dict[str, float] | None = None
             return group
 
@@ -799,6 +859,24 @@ if QtWidgets is not None:
                 self.base_thickness_spin,
                 self.base_beam_width_spin,
                 self.base_node_diameter_spin,
+                self.connectivity_repair_checkbox,
+            ):
+                field.setEnabled(available)
+            self._set_connectivity_controls_enabled(
+                available and self.connectivity_repair_checkbox.isChecked()
+            )
+
+        @QtCore.Slot(bool)
+        def _set_connectivity_controls_enabled(self, enabled: bool) -> None:
+            available = (
+                bool(enabled)
+                and self._thread is None
+                and self.network_base_checkbox.isChecked()
+            )
+            for field in (
+                self.connectivity_repair_reach_spin,
+                self.connectivity_bridge_diameter_spin,
+                self.connectivity_repair_passes_spin,
             ):
                 field.setEnabled(available)
 
@@ -1108,6 +1186,18 @@ if QtWidgets is not None:
                 base_thickness_mm=self.base_thickness_spin.value(),
                 base_beam_width_mm=self.base_beam_width_spin.value(),
                 base_node_diameter_mm=self.base_node_diameter_spin.value(),
+                connectivity_repair_enabled=(
+                    self.connectivity_repair_checkbox.isChecked()
+                ),
+                connectivity_repair_reach_mm=(
+                    self.connectivity_repair_reach_spin.value()
+                ),
+                connectivity_bridge_diameter_mm=(
+                    self.connectivity_bridge_diameter_spin.value()
+                ),
+                connectivity_repair_passes=(
+                    self.connectivity_repair_passes_spin.value()
+                ),
                 painted_enforcer_faces=enforcers,
                 painted_blocker_faces=blockers,
                 paint_face_count=self.preview.face_count,

@@ -58,6 +58,32 @@ def _add_generation_arguments(parser: argparse.ArgumentParser) -> None:
         default=8.0,
         metavar="MM",
     )
+    parser.add_argument(
+        "--no-connectivity-repair",
+        action="store_true",
+        help="do not progressively bridge small detached support regions",
+    )
+    parser.add_argument(
+        "--connectivity-repair-reach",
+        type=float,
+        default=5.0,
+        metavar="MM",
+        help="maximum gap bridged by the final connectivity repair pass",
+    )
+    parser.add_argument(
+        "--connectivity-bridge-diameter",
+        type=float,
+        default=1.2,
+        metavar="MM",
+        help="rounded repair-web diameter at the final pass",
+    )
+    parser.add_argument(
+        "--connectivity-repair-passes",
+        type=int,
+        default=4,
+        metavar="N",
+        help="number of progressively stronger connectivity repair attempts",
+    )
     parser.add_argument("--engine", type=Path, help="native adapter executable")
     parser.add_argument(
         "--retain-failed-geometry",
@@ -140,6 +166,10 @@ def _generation_job(args: argparse.Namespace) -> GenerationJob:
         base_thickness_mm=args.base_thickness,
         base_beam_width_mm=args.base_beam_width,
         base_node_diameter_mm=args.base_node_diameter,
+        connectivity_repair_enabled=not args.no_connectivity_repair,
+        connectivity_repair_reach_mm=args.connectivity_repair_reach,
+        connectivity_bridge_diameter_mm=args.connectivity_bridge_diameter,
+        connectivity_repair_passes=args.connectivity_repair_passes,
         retain_failed_geometry=args.retain_failed_geometry,
         engine_path=args.engine,
     )

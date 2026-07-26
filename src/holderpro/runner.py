@@ -30,6 +30,7 @@ from .engine import (
     find_engine,
     inspect_engine,
 )
+from .connectivity_repair import repair_layer_connectivity
 from .engine import (
     project_root as project_root,
 )
@@ -82,6 +83,10 @@ class GenerationJob:
     base_thickness_mm: float = 20.0
     base_beam_width_mm: float = 3.0
     base_node_diameter_mm: float = 8.0
+    connectivity_repair_enabled: bool = True
+    connectivity_repair_reach_mm: float = 5.0
+    connectivity_bridge_diameter_mm: float = 1.2
+    connectivity_repair_passes: int = 4
     painted_enforcer_faces: tuple[int, ...] = ()
     painted_blocker_faces: tuple[int, ...] = ()
     paint_face_count: int | None = None
@@ -137,6 +142,8 @@ class GenerationJob:
             "base thickness": self.base_thickness_mm,
             "blob margin": self.base_beam_width_mm,
             "root lobe diameter": self.base_node_diameter_mm,
+            "connectivity repair reach": self.connectivity_repair_reach_mm,
+            "connectivity bridge diameter": self.connectivity_bridge_diameter_mm,
         }
         for name, value in numeric.items():
             if not math.isfinite(float(value)):
@@ -169,6 +176,20 @@ class GenerationJob:
             raise GenerationError("Blob margin must be between 0.5 and 30 mm")
         if not 0.5 <= self.base_node_diameter_mm <= 50.0:
             raise GenerationError("Root lobe diameter must be between 0.5 and 50 mm")
+        if not isinstance(self.connectivity_repair_enabled, bool):
+            raise GenerationError("connectivity_repair_enabled must be true or false")
+        if not 0.05 <= self.connectivity_repair_reach_mm <= 20.0:
+            raise GenerationError("Connectivity repair reach must be between 0.05 and 20 mm")
+        if not 0.2 <= self.connectivity_bridge_diameter_mm <= 10.0:
+            raise GenerationError(
+                "Connectivity bridge diameter must be between 0.2 and 10 mm"
+            )
+        if (
+            isinstance(self.connectivity_repair_passes, bool)
+            or not isinstance(self.connectivity_repair_passes, Integral)
+            or not 1 <= self.connectivity_repair_passes <= 10
+        ):
+            raise GenerationError("Connectivity repair passes must be between 1 and 10")
         if (
             self.network_base_enabled
             and self.base_thickness_mm >= self.bottom_height_mm
@@ -261,6 +282,12 @@ class GenerationJob:
             base_thickness_mm=float(self.base_thickness_mm),
             base_beam_width_mm=float(self.base_beam_width_mm),
             base_node_diameter_mm=float(self.base_node_diameter_mm),
+            connectivity_repair_enabled=self.connectivity_repair_enabled,
+            connectivity_repair_reach_mm=float(self.connectivity_repair_reach_mm),
+            connectivity_bridge_diameter_mm=float(
+                self.connectivity_bridge_diameter_mm
+            ),
+            connectivity_repair_passes=int(self.connectivity_repair_passes),
             painted_enforcer_faces=enforcers,
             painted_blocker_faces=blockers,
             paint_face_count=paint_face_count,
@@ -970,10 +997,59 @@ def generate(
             "Final support export is not a watertight positive-volume solid"
         )
     component_count = _count_material_components(support_mesh)
+    nearest_unresolved_gap: float | None = None
+    if (
+        job.network_base_enabled
+        and component_count != 1
+        and job.connectivity_repair_enabled
+    ):
+        original_payload = payload
+        for attempt in range(1, job.connectivity_repair_passes + 1):
+            _check_cancelled(cancelled)
+            fraction = attempt / job.connectivity_repair_passes
+            reach = max(0.05, job.connectivity_repair_reach_mm * fraction)
+            diameter = max(0.2, job.connectivity_bridge_diameter_mm * fraction)
+            _notify(
+                progress,
+                f"Connectivity repair pass {attempt}/"
+                f"{job.connectivity_repair_passes}: reach {reach:.2f} mm, "
+                f"bridge {diameter:.2f} mm…",
+            )
+            try:
+                candidate_payload, repair_stats = repair_layer_connectivity(
+                    original_payload,
+                    reach_mm=reach,
+                    bridge_diameter_mm=diameter,
+                )
+                candidate_mesh = solidify_layers(candidate_payload)
+            except (LayerFormatError, SolidificationError, TypeError, ValueError):
+                continue
+            candidate_mesh.apply_translation(
+                (-BED_CENTER_MM[0], -BED_CENTER_MM[1], 0.0)
+            )
+            candidate_count = _count_material_components(candidate_mesh)
+            nearest_unresolved_gap = repair_stats.nearest_unresolved_gap_mm
+            if candidate_count == 1:
+                support_mesh = candidate_mesh
+                payload = candidate_payload
+                component_count = 1
+                _notify(
+                    progress,
+                    f"Connectivity repaired with {repair_stats.bridge_count} "
+                    "rounded layer bridge(s).",
+                )
+                break
     if job.network_base_enabled and component_count != 1:
+        gap_detail = (
+            f" Nearest unresolved layer gap: {nearest_unresolved_gap:.2f} mm; "
+            "increase Connectivity repair reach or bridge diameter."
+            if nearest_unresolved_gap is not None
+            else ""
+        )
         raise GenerationError(
             "Connected-base generation produced "
-            f"{component_count} separate support components; output was not written"
+            f"{component_count} separate support components; output was not written."
+            f"{gap_detail}"
         )
     _check_cancelled(cancelled)
 
