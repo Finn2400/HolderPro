@@ -562,6 +562,17 @@ def test_release_workflows_validate_tags_with_protected_main_before_checkout() -
     assert "refs/(tags/.+|heads/main)" not in publish
 
 
+def test_release_build_preflight_uses_tomllib_capable_python() -> None:
+    workflow = (PROJECT / ".github/workflows/release-build.yml").read_text(
+        encoding="utf-8"
+    )
+    preflight = workflow.split("\n  source:\n", maxsplit=1)[0]
+
+    assert "actions/setup-python@" in preflight
+    assert 'python-version: "3.11.9"' in preflight
+    assert preflight.index("actions/setup-python@") < preflight.index("import tomllib")
+
+
 def test_release_constraints_pin_the_build_dependency_closure() -> None:
     resolved = exact_constraints(PROJECT / "packaging/release-constraints.txt")
 
