@@ -69,10 +69,13 @@ jobs:
         run: |
           version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           echo "HOLDERPRO_VERSION=$version" >> "$GITHUB_ENV"
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Restore immutable native source and download inputs
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ${{ github.workspace }}/.native-cache
-          key: prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
+          path: |
+            ${{ github.workspace }}/.native-cache/downloads
+            ${{ github.workspace }}/.native-cache/prusaslicer-b028299c770b8380ee81c921a2867d522f288123
+          key: prusa-inputs-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json') }}
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y autoconf automake libdbus-1-dev libgl1-mesa-dev libtool m4 ninja-build texinfo
       - if: runner.os == 'macOS'
@@ -90,11 +93,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build-native.ps1 -Preset "${{ matrix.target }}" -DownloadSource -Version $env:HOLDERPRO_VERSION -BuildId $env:HOLDERPRO_BUILD_ID
-      - name: Save completed native dependency cache
+      - name: Save immutable native source and download inputs
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ${{ github.workspace }}/.native-cache
-          key: prusa-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json', 'native/CMakePresets.json') }}
+          path: |
+            ${{ github.workspace }}/.native-cache/downloads
+            ${{ github.workspace }}/.native-cache/prusaslicer-b028299c770b8380ee81c921a2867d522f288123
+          key: prusa-inputs-2.9.6-${{ matrix.target }}-${{ hashFiles('scripts/build-native.*', 'scripts/prefetch-native-dependencies.cmake', 'packaging/prusaslicer-native-dependency-sources.json') }}
       - name: Install auditable native runtime (Unix)
         if: runner.os != 'Windows'
         run: cmake --install native/build/${{ matrix.target }} --prefix native/stage/${{ matrix.target }} --strip

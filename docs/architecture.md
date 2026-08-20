@@ -57,8 +57,15 @@ reader compatibility policy, fixtures, and release note.
 ### Geometry contract
 
 - 3MF Core/Production geometry is loaded by HolderPro's bounded stdlib/NumPy
-  reader, so core installs do not acquire trimesh's optional NetworkX/lxml
-  dependency path.
+  streaming reader, so even multi-gigabyte model XML is not retained as an
+  element tree and core installs do not acquire trimesh's optional
+  NetworkX/lxml dependency path. Explicit archive, compression-ratio,
+  vertex/triangle, component, expansion, and nesting budgets remain enforced.
+- Reference previews default to at most 2.5 million displayed faces while
+  retaining the complete source triangle mesh and spatial index for paint
+  selection, face fingerprints, and generation. Larger models present an
+  explicit per-load choice between that high-detail proxy, a multi-gigabyte
+  all-faces preview, or cancellation.
 - Green paint is a strict allow-list for support contact.
 - Paint indices are fingerprinted, remapped when float32 coordinates collapse
   triangles, and handed to the engine with a minimal face-order-preserving 3MF.
@@ -83,10 +90,11 @@ Preview reduction uses VTK's quadric decimator. Replacing VTK with a custom
 
 ## Distribution
 
-Each platform wheel includes one matching native engine. Desktop packages use
-the same engine artifact and a PyInstaller one-directory layout. This keeps Qt
-and other replaceable libraries visible and makes native dependency auditing
-more reliable than a one-file self-extractor.
+Each platform wheel includes one matching native engine. GitHub Releases carry
+the four exact wheels and their source/provenance material; PyPI receives those
+same wheels without rebuilding. The optional GUI remains an ordinary Python
+extra, so Qt and VTK are installed as separate, replaceable distributions
+rather than copied into a frozen application.
 
 The native engine never downloads a component at runtime. User models, paint,
 temporary geometry, and diagnostic bundles remain local.

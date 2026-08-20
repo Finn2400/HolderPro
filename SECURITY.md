@@ -25,6 +25,8 @@ bug-bounty commitment.
 ## Release security
 
 Official binaries are published only on GitHub Releases and PyPI. Verify the
-release checksum and platform signature. A release is blocked if its SBOM,
-provenance attestation, corresponding-source archive, notarization/signature,
-or native dependency audit is missing.
+release checksum and GitHub build attestation. A release is blocked if its
+SBOM, provenance attestation, corresponding-source archive, dependency-source
+closure, or native dependency audit is missing. HolderPro does not claim Apple
+notarization or Windows Authenticode signing; see
+[Release authenticity](docs/release-authenticity.md).

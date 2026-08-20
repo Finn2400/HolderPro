@@ -283,7 +283,13 @@ def inspect_engine(
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise EngineError(f"Could not query HolderPro engine: {exc}") from exc
+        detail = f"Could not query HolderPro engine: {exc}"
+        if platform.system() == "Windows" and getattr(exc, "winerror", None) == 126:
+            detail += (
+                ". Install the current Microsoft Visual C++ v14 x64 "
+                "Redistributable, then run holderpro doctor again"
+            )
+        raise EngineError(detail) from exc
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         raise EngineError(

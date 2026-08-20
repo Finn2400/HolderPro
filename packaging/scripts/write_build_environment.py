@@ -10,7 +10,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -51,9 +50,6 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--build-id", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--appimagetool-url")
-    parser.add_argument("--appimagetool-sha256")
-    parser.add_argument("--appimagetool-path", type=Path)
     parser.add_argument(
         "--constraints",
         type=Path,
@@ -101,26 +97,8 @@ def main() -> int:
             "xcode": command_version(["xcodebuild", "-version"]),
             "macos_sdk": command_version(["xcrun", "--sdk", "macosx", "--show-sdk-version"]),
             "glibc": command_version(["ldd", "--version"]),
-            "inno_setup": command_version(["iscc.exe", "/?"], ["iscc", "/?"]),
-            "pyinstaller": command_version([sys.executable, "-m", "PyInstaller", "--version"]),
         },
     }
-    if args.target == "linux-x86_64":
-        if not (
-            args.appimagetool_url
-            and args.appimagetool_sha256
-            and args.appimagetool_path
-            and args.appimagetool_path.is_file()
-        ):
-            raise SystemExit("Linux build manifest requires the pinned appimagetool")
-        actual = sha256(args.appimagetool_path)
-        if actual.lower() != args.appimagetool_sha256.lower():
-            raise SystemExit("appimagetool digest changed before environment capture")
-        document["appimagetool"] = {
-            "source_url": args.appimagetool_url,
-            "sha256": actual,
-            "version": command_version([str(args.appimagetool_path), "--version"]),
-        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(args.output)

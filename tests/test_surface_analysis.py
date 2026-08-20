@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import sys
 
 import numpy as np
@@ -14,8 +15,10 @@ sys.path.insert(0, str(PROJECT_PYTHON))
 from holderpro.surface_analysis import (  # noqa: E402
     PAINT_BLOCKER,
     PAINT_ENFORCER,
+    analyze_posed_surface,
     analyze_surface,
     mesh_fingerprint,
+    posed_geometry,
     surface_colors,
 )
 
@@ -49,6 +52,25 @@ def test_pose_rotation_updates_underside_classification() -> None:
     )
 
 
+def test_precomputed_pose_analysis_matches_full_analysis() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=2, radius=3.0)
+    _vertices, centers, normals = posed_geometry(mesh, 17.0, -28.0, 41.0, 12.0)
+
+    direct = analyze_surface(
+        mesh,
+        rotation_x_deg=17.0,
+        rotation_y_deg=-28.0,
+        rotation_z_deg=41.0,
+        bottom_height_mm=12.0,
+    )
+    reused = analyze_posed_surface(mesh, centers, normals)
+
+    np.testing.assert_allclose(reused.downwardness, direct.downwardness)
+    np.testing.assert_allclose(reused.underside_angle_deg, direct.underside_angle_deg)
+    np.testing.assert_allclose(reused.relative_height, direct.relative_height)
+    np.testing.assert_allclose(reused.concavity, direct.concavity)
+
+
 def test_paint_colors_override_surface_heatmap() -> None:
     mesh = trimesh.creation.box()
     analysis = analyze_surface(mesh)
@@ -70,3 +92,16 @@ def test_mesh_fingerprint_tracks_face_index_identity() -> None:
 
     assert mesh_fingerprint(mesh) == mesh_fingerprint(same)
     assert mesh_fingerprint(mesh) != mesh_fingerprint(reordered)
+
+
+def test_chunked_mesh_fingerprint_preserves_existing_digest_format() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=3)
+    vertices = np.ascontiguousarray(mesh.vertices, dtype="<f8")
+    faces = np.ascontiguousarray(mesh.faces, dtype="<u8")
+    legacy = hashlib.sha256()
+    legacy.update(np.asarray(vertices.shape, dtype="<u8").tobytes())
+    legacy.update(vertices.tobytes())
+    legacy.update(np.asarray(faces.shape, dtype="<u8").tobytes())
+    legacy.update(faces.tobytes())
+
+    assert mesh_fingerprint(mesh) == legacy.hexdigest()

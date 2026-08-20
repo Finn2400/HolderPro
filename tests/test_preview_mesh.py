@@ -11,12 +11,20 @@ PROJECT_PYTHON = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(PROJECT_PYTHON))
 
 from holderpro.preview import (  # noqa: E402
+    _cluster_polydata_for_preview,
+    _polydata_from_mesh,
     adjusted_bottom_height,
+    bed_grid_segments,
+    contrasting_grid_color,
     decimate_mesh_for_preview,
     load_support_preview_mesh,
+    merged_topology_copy,
     point_triangle_distance_squared,
+    rotate_euler_about_world_axis,
+    signed_axis_angle_degrees,
     triangle_faces_within_sphere,
 )
+from holderpro.surface_analysis import rotation_matrix  # noqa: E402
 from holderpro.solidify import export_mesh_stl  # noqa: E402
 
 
@@ -53,6 +61,76 @@ def test_support_preview_displays_prusa_valid_tangent_shell_fallback(
 def test_upward_pose_drag_raises_model_and_clamps_to_bed() -> None:
     assert adjusted_bottom_height(25.0, -20.0) == pytest.approx(28.0)
     assert adjusted_bottom_height(2.0, 100.0) == pytest.approx(0.01)
+
+
+def test_axis_ring_drag_has_stable_signed_rotation() -> None:
+    assert signed_axis_angle_degrees(
+        np.asarray((0.0, 0.0, 1.0)),
+        np.asarray((1.0, 0.0, 0.0)),
+        np.asarray((0.0, 1.0, 0.0)),
+    ) == pytest.approx(90.0)
+    assert signed_axis_angle_degrees(
+        np.asarray((0.0, 0.0, 2.0)),
+        np.asarray((0.0, 3.0, 0.0)),
+        np.asarray((4.0, 0.0, 0.0)),
+    ) == pytest.approx(-90.0)
+
+
+def test_axis_ring_composes_the_axis_shown_in_world_space() -> None:
+    initial = (30.0, 40.0, 50.0)
+    result = rotate_euler_about_world_axis(
+        *initial,
+        np.asarray((1.0, 0.0, 0.0)),
+        12.0,
+    )
+
+    expected = rotation_matrix(12.0, 0.0, 0.0) @ rotation_matrix(*initial)
+    assert rotation_matrix(*result) == pytest.approx(expected, abs=1e-10)
+
+
+def test_preview_welds_stl_triangle_soup_without_changing_faces() -> None:
+    box = trimesh.creation.box(extents=(4.0, 5.0, 6.0))
+    triangle_vertices = np.asarray(box.triangles).reshape((-1, 3))
+    soup = trimesh.Trimesh(
+        vertices=triangle_vertices,
+        faces=np.arange(len(triangle_vertices)).reshape((-1, 3)),
+        process=False,
+    )
+
+    display = merged_topology_copy(soup)
+
+    assert len(display.faces) == len(soup.faces)
+    assert len(display.vertices) == 8
+    assert len(display.face_adjacency) > 0
+    np.testing.assert_allclose(display.triangles, soup.triangles)
+
+
+def test_build_plate_grid_uses_maximum_background_contrast() -> None:
+    assert contrasting_grid_color((0.055, 0.064, 0.075), (0.12, 0.14, 0.17)) == (
+        1.0,
+        1.0,
+        1.0,
+    )
+    assert contrasting_grid_color((0.88, 0.90, 0.94), (1.0, 1.0, 1.0)) == (
+        0.0,
+        0.0,
+        0.0,
+    )
+
+
+def test_build_plate_grid_has_disjoint_minor_major_and_border_lines() -> None:
+    minor, major, border = bed_grid_segments()
+
+    assert minor.shape == (32, 2, 3)
+    assert major.shape == (6, 2, 3)
+    assert border.shape == (4, 2, 3)
+    combined = np.concatenate((minor, major, border))
+    assert np.all(combined[:, :, 2] == 0.0)
+    assert np.max(np.abs(combined[:, :, :2])) == pytest.approx(100.0)
+    canonical = {
+        tuple(np.round(segment, 8).ravel()) for segment in combined
+    }
+    assert len(canonical) == len(combined)
 
 
 def test_brush_distance_uses_triangle_surface_not_triangle_center() -> None:
@@ -101,6 +179,29 @@ def test_brush_spatial_query_includes_disconnected_left_and_right_faces() -> Non
     assert set(selected) == {0, 1, 2}
 
 
+def test_brush_indexed_geometry_matches_materialized_triangles() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=2, radius=3.0)
+    triangles = np.asarray(mesh.triangles, dtype=float)
+
+    class AllFacesLocator:
+        def candidate_faces(self, _bounds: tuple[float, ...]) -> range:
+            return range(len(mesh.faces))
+
+    point = np.asarray((0.0, 0.0, 3.0))
+    materialized = triangle_faces_within_sphere(
+        triangles, AllFacesLocator(), point, radius=0.8
+    )
+    indexed = triangle_faces_within_sphere(
+        np.asarray(mesh.vertices),
+        AllFacesLocator(),
+        point,
+        radius=0.8,
+        faces=np.asarray(mesh.faces),
+    )
+
+    np.testing.assert_array_equal(indexed, materialized)
+
+
 def test_vtk_quadric_preview_decimation_preserves_closed_support_volume() -> None:
     pytest.importorskip("PySide6")
     pytest.importorskip("vtkmodules")
@@ -111,3 +212,18 @@ def test_vtk_quadric_preview_decimation_preserves_closed_support_volume() -> Non
     assert len(preview.faces) <= 1_220
     assert preview.is_watertight and preview.is_volume
     assert preview.volume == pytest.approx(source.volume, rel=0.02)
+
+
+def test_vtk_quadric_clustering_builds_bounded_extreme_mesh_proxy() -> None:
+    pytest.importorskip("PySide6")
+    pytest.importorskip("vtkmodules")
+    source = trimesh.creation.icosphere(subdivisions=5, radius=12.0)
+
+    preview = _cluster_polydata_for_preview(
+        _polydata_from_mesh(source, deep=False),
+        target_face_count=4_000,
+    )
+
+    assert 1_000 < len(preview.faces) < 8_000
+    assert np.isfinite(preview.vertices).all()
+    np.testing.assert_allclose(preview.bounds, source.bounds, atol=0.5)

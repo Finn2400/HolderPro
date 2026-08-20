@@ -216,10 +216,10 @@ if(BUILD_TESTING)
 endif()
 
 # Release jobs install to a staging directory with `cmake --install --strip`
-# before dependency auditing, signing, and packaging. The build-tree binary is
+# before dependency auditing and wheel packaging. The build-tree binary is
 # deliberately left unstripped so local failures remain diagnosable. Windows
-# Prusa dependencies include runtime DLLs (notably GMP), so collect every
-# non-system transitive runtime next to the executable for wheels/installers.
+# Prusa's Windows prefix may contain runtime DLLs, so collect every non-system
+# transitive runtime actually imported by the executable for platform wheels.
 if(WIN32)
     install(TARGETS holderpro-organic-engine
         RUNTIME_DEPENDENCIES

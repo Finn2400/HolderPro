@@ -1,7 +1,7 @@
 {
   "schema": "holderpro.native-dependency-sources/v1",
   "prusaslicer_commit": "b028299c770b8380ee81c921a2867d522f288123",
-  "description": "Union of the exact external source packages selected by HolderPro's pinned headless PrusaSlicer dependency presets. System-library selection remains target-specific.",
+  "description": "Union of the exact external source packages selected by HolderPro's pinned headless PrusaSlicer dependency presets, including target-specific sources corresponding to PrusaSlicer's bundled Windows link inputs. System-library selection remains target-specific.",
   "components": [
     {
       "name": "Blosc",
@@ -81,6 +81,60 @@
       "definition": "deps/+GMP/GMP.cmake"
     },
     {
+      "name": "GMP (PrusaSlicer Windows bundled build input)",
+      "version": "5.0.1",
+      "source_url": "https://ftp.gnu.org/gnu/gmp/gmp-5.0.1.tar.bz2",
+      "verified_mirror_urls": [
+        "https://ftpmirror.gnu.org/gmp/gmp-5.0.1.tar.bz2"
+      ],
+      "source_sha256": "a2a610f01fd3298dc08c87bf30498c2402590e1bcb227fc40b15ee6d280939fb",
+      "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+      "definition": "deps/+GMP/GMP.cmake",
+      "targets": ["windows-x86_64"],
+      "bundled_binary_source": {
+        "definition_sha256": "0aa40108d0946357cbca917f81c6816cec61f77940173c6308d097ee92e9ea2b",
+        "artifacts": [
+          {
+            "role": "runtime-dll",
+            "path": "deps/+GMP/gmp/lib/win64/libgmp-10.dll",
+            "sha256": "fec43cb18ce0ec8a5dd6ad1db745747167310ccb92b5acff0d445a8b3013f009"
+          },
+          {
+            "role": "import-library",
+            "path": "deps/+GMP/gmp/lib/win64/libgmp-10.lib",
+            "sha256": "63fbb59cd3b7879f71cf2d3d9133f6edcd6d6afb122a1fff085afb7c2f486f0f"
+          },
+          {
+            "role": "header",
+            "path": "deps/+GMP/gmp/include/gmp.h",
+            "sha256": "6b7a4c57b819b6c5af8f8255c6e8800694c1b53b8f8e09c167e7d3779e6d6505"
+          }
+        ],
+        "version_markers": [
+          {
+            "path": "deps/+GMP/gmp/lib/win64/libgmp-10.dll",
+            "encoding": "utf-16le",
+            "text": "5.0.1.0"
+          },
+          {
+            "path": "deps/+GMP/gmp/include/gmp.h",
+            "encoding": "utf-8",
+            "text": "#define __GNU_MP_VERSION 5"
+          },
+          {
+            "path": "deps/+GMP/gmp/include/gmp.h",
+            "encoding": "utf-8",
+            "text": "#define __GNU_MP_VERSION_MINOR 0"
+          },
+          {
+            "path": "deps/+GMP/gmp/include/gmp.h",
+            "encoding": "utf-8",
+            "text": "#define __GNU_MP_VERSION_PATCHLEVEL 1"
+          }
+        ]
+      }
+    },
+    {
       "name": "JPEG",
       "version": "3.0.1",
       "source_url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.1.zip",
@@ -103,6 +157,70 @@
       "source_sha256": "b9df93635b20e4089c29623b19420c4ac848a1b29df1cfd59f26cab0d2666aa0",
       "license": "LGPL-3.0-or-later",
       "definition": "deps/+MPFR/MPFR.cmake"
+    },
+    {
+      "name": "MPFR (PrusaSlicer Windows bundled build input)",
+      "version": "3.0.0",
+      "source_url": "https://www.mpfr.org/mpfr-3.0.0/mpfr-3.0.0.tar.bz2",
+      "verified_mirror_urls": [
+        "https://ftp.gnu.org/gnu/mpfr/mpfr-3.0.0.tar.bz2"
+      ],
+      "source_sha256": "8f4e5f9c53536cb798a30455ac429b1f9fc75a0f8af32d6e0ac31ebf1024821f",
+      "license": "LGPL-3.0-or-later",
+      "definition": "deps/+MPFR/MPFR.cmake",
+      "targets": ["windows-x86_64"],
+      "bundled_binary_source": {
+        "definition_sha256": "cbc5bf6d9745b2f92ffcc4d56f4cccecf6c4eb4f9e20a4974b71d57bf7a4dceb",
+        "artifacts": [
+          {
+            "role": "runtime-dll",
+            "path": "deps/+MPFR/mpfr/lib/win64/libmpfr-4.dll",
+            "sha256": "09b3b868b96433991fc15c9c5ae6f9a44c62d2e21194110442607917391ed927"
+          },
+          {
+            "role": "import-library",
+            "path": "deps/+MPFR/mpfr/lib/win64/libmpfr-4.lib",
+            "sha256": "db89bd46fcbbd99b56197284e5593b3f9ce744ccb8ead9aebee9b714bd2547dc"
+          },
+          {
+            "role": "header",
+            "path": "deps/+MPFR/mpfr/include/mpfr.h",
+            "sha256": "05d2d1c356fe541c67ba8660efc0384fe56714149cff2bd896c387e931e7fd95"
+          },
+          {
+            "role": "header",
+            "path": "deps/+MPFR/mpfr/include/mpf2mpfr.h",
+            "sha256": "656ee5c68af6e0b76ed08c5c919ab0f51b8670207f4499c30a55fcf04266dacf"
+          }
+        ],
+        "version_markers": [
+          {
+            "path": "deps/+MPFR/mpfr/lib/win64/libmpfr-4.dll",
+            "encoding": "utf-16le",
+            "text": "3.0.0.0"
+          },
+          {
+            "path": "deps/+MPFR/mpfr/include/mpfr.h",
+            "encoding": "utf-8",
+            "text": "#define MPFR_VERSION_MAJOR 3"
+          },
+          {
+            "path": "deps/+MPFR/mpfr/include/mpfr.h",
+            "encoding": "utf-8",
+            "text": "#define MPFR_VERSION_MINOR 0"
+          },
+          {
+            "path": "deps/+MPFR/mpfr/include/mpfr.h",
+            "encoding": "utf-8",
+            "text": "#define MPFR_VERSION_PATCHLEVEL 0"
+          },
+          {
+            "path": "deps/+MPFR/mpfr/include/mpfr.h",
+            "encoding": "utf-8",
+            "text": "#define MPFR_VERSION_STRING \"3.0.0\""
+          }
+        ]
+      }
     },
     {
       "name": "NLopt",
@@ -207,7 +325,158 @@
     "macos-arm64": ["OpenGL", "CURL", "ZLIB"],
     "macos-x86_64": ["OpenGL", "CURL", "ZLIB"],
     "linux-x86_64": ["OpenGL", "ZLIB"],
-    "windows-x86_64": ["OpenGL"]
+    "windows-x86_64": [
+      "OpenGL",
+      "Microsoft Visual C++ v14 x64 Redistributable (external prerequisite; not redistributed)"
+    ]
   },
-  "vendored_components": "Vendored components such as Clipper, admesh, miniz, libigl, and semver are contained in the complete pinned PrusaSlicer source tree."
+  "vendored_components": [
+    {
+      "name": "Clipper",
+      "version": "6.4.2-derived",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "BSL-1.0",
+      "source_path": "src/clipper",
+      "notice_paths": [
+        "src/clipper/clipper.hpp",
+        "src/clipper/clipper.cpp"
+      ]
+    },
+    {
+      "name": "ADMesh",
+      "version": "PrusaSlicer-modified snapshot",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "GPL-2.0-or-later",
+      "source_path": "bundled_deps/admesh",
+      "notice_paths": [
+        "bundled_deps/admesh/admesh/stl.h",
+        "bundled_deps/admesh/admesh/connect.cpp",
+        "bundled_deps/admesh/admesh/normals.cpp",
+        "bundled_deps/admesh/admesh/shared.cpp",
+        "bundled_deps/admesh/admesh/stl_io.cpp",
+        "bundled_deps/admesh/admesh/stlinit.cpp",
+        "bundled_deps/admesh/admesh/util.cpp"
+      ]
+    },
+    {
+      "name": "miniz",
+      "version": "2.1.0-derived",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MIT",
+      "source_path": "bundled_deps/miniz",
+      "notice_paths": [
+        "bundled_deps/miniz/LICENSE",
+        "bundled_deps/miniz/README-Prusa.txt",
+        "bundled_deps/miniz/miniz.c"
+      ]
+    },
+    {
+      "name": "libigl",
+      "version": "PrusaSlicer vendored snapshot",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MPL-2.0",
+      "source_path": "bundled_deps/libigl",
+      "notice_paths": [
+        "bundled_deps/libigl/igl/Hit.h",
+        "bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.h",
+        "bundled_deps/libigl/igl/copyleft/README.md"
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "0.2.0-derived",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MIT",
+      "source_path": "bundled_deps/semver",
+      "notice_paths": [
+        "bundled_deps/semver/semver.h",
+        "bundled_deps/semver/semver.c"
+      ]
+    },
+    {
+      "name": "libnest2d",
+      "version": "PrusaSlicer vendored snapshot",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "LGPL-3.0-only",
+      "source_path": "bundled_deps/libnest2d",
+      "notice_paths": [
+        "bundled_deps/libnest2d/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "Mesa GLU libtess",
+      "version": "Mesa GLU snapshot 0bf42e41c8b63fc2488dd8d41f696310b5a5a6a7-derived",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "SGI-B-2.0",
+      "source_path": "bundled_deps/glu-libtess",
+      "notice_paths": [
+        "bundled_deps/glu-libtess/README",
+        "bundled_deps/glu-libtess/src/tess.c"
+      ]
+    },
+    {
+      "name": "QOI",
+      "version": "upstream snapshot 6c0831f91ffde5dfe2ceef32cbaff91d62b0e0ee",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MIT",
+      "source_path": "bundled_deps/qoi",
+      "notice_paths": [
+        "bundled_deps/qoi/README.md",
+        "bundled_deps/qoi/qoi.h"
+      ]
+    },
+    {
+      "name": "fast_float",
+      "version": "PrusaSlicer vendored snapshot",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MIT",
+      "source_path": "bundled_deps/fast_float",
+      "notice_paths": [
+        "bundled_deps/fast_float/fast_float.h"
+      ]
+    },
+    {
+      "name": "Clipper Int128",
+      "version": "6.2.9-derived with PrusaSlicer modifications",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "AGPL-3.0-or-later AND BSL-1.0",
+      "source_path": "bundled_deps/int128",
+      "notice_paths": [
+        "bundled_deps/int128/Int128.hpp"
+      ]
+    },
+    {
+      "name": "tcb::span",
+      "version": "upstream snapshot 836dc6a0efd9849cb194e88e4aa2387436bb079b",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "BSL-1.0",
+      "source_path": "bundled_deps/tcbspan",
+      "notice_paths": [
+        "bundled_deps/tcbspan/README.md",
+        "bundled_deps/tcbspan/tcbspan/span.hpp"
+      ]
+    },
+    {
+      "name": "Anti-Grain Geometry",
+      "version": "2.4",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "BSD-3-Clause",
+      "source_path": "bundled_deps/agg",
+      "notice_paths": [
+        "bundled_deps/agg/agg/AUTHORS",
+        "bundled_deps/agg/agg/copying"
+      ]
+    },
+    {
+      "name": "ankerl::unordered_dense",
+      "version": "3.1.1",
+      "snapshot": "b028299c770b8380ee81c921a2867d522f288123",
+      "license": "MIT",
+      "source_path": "bundled_deps/ankerl",
+      "notice_paths": [
+        "bundled_deps/ankerl/README.txt",
+        "bundled_deps/ankerl/ankerl/unordered_dense.h"
+      ]
+    }
+  ]
 }

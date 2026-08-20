@@ -5,33 +5,29 @@
       "id": "macos-arm64",
       "runner": "macos-15",
       "wheel_platform": "macosx_13_0_arm64",
-      "desktop": ["dmg"],
-      "signed": true,
-      "notarized": true
+      "artifacts": ["wheel"],
+      "distribution": ["github", "pypi"]
     },
     {
       "id": "macos-x86_64",
       "runner": "macos-15-intel",
       "wheel_platform": "macosx_13_0_x86_64",
-      "desktop": ["dmg"],
-      "signed": true,
-      "notarized": true
+      "artifacts": ["wheel"],
+      "distribution": ["github", "pypi"]
     },
     {
       "id": "windows-x86_64",
       "runner": "windows-2022",
       "wheel_platform": "win_amd64",
-      "desktop": ["exe", "zip"],
-      "signed": true,
-      "notarized": false
+      "artifacts": ["wheel"],
+      "distribution": ["github", "pypi"]
     },
     {
       "id": "linux-x86_64",
       "runner": "ubuntu-22.04",
       "wheel_platform": "manylinux_2_35_x86_64",
-      "desktop": ["AppImage", "tar.zst"],
-      "signed": false,
-      "notarized": false
+      "artifacts": ["wheel"],
+      "distribution": ["github", "pypi"]
     }
   ]
 }

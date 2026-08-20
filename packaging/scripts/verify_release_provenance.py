@@ -36,6 +36,40 @@ def sha256(path: Path) -> str:
     return value.hexdigest()
 
 
+def semantic_digest(document: object) -> str:
+    """Hash JSON by meaning, independent of whitespace and key order."""
+
+    encoded = json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def require_native_license_binding(
+    package: zipfile.ZipFile,
+    target: str,
+    dependency_sources_digest: str,
+) -> None:
+    suffix = ".dist-info/licenses/native/MANIFEST.json"
+    matches = [name for name in package.namelist() if name.endswith(suffix)]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"{target} wheel does not contain exactly one native legal manifest"
+        )
+    manifest = load_object(
+        package.read(matches[0]), f"{target} wheel native legal manifest"
+    )
+    if (
+        manifest.get("schema") != "holderpro.native-license-bundle/v1"
+        or manifest.get("prusa_source_commit") != PRUSA_COMMIT
+        or manifest.get("dependency_sources_sha256")
+        != dependency_sources_digest
+    ):
+        raise RuntimeError(
+            f"{target} native legal bundle does not match the release sources"
+        )
+
+
 def require_binding(
     document: dict[str, Any], target: str, version: str, build_id: str
 ) -> None:
@@ -96,6 +130,7 @@ def main() -> int:
             or dependencies.get("prusa_source_commit") != PRUSA_COMMIT
         ):
             raise RuntimeError("dependency source manifest has wrong release provenance")
+        dependency_sources_digest = semantic_digest(dependencies)
 
         covered_assets: set[str] = set()
         for target_name, target in TARGETS.items():
@@ -134,6 +169,9 @@ def main() -> int:
                 embedded = load_object(
                     package.read(f"holderpro/_native/{NATIVE_MANIFEST_NAME}"),
                     f"{target_name} wheel native manifest",
+                )
+                require_native_license_binding(
+                    package, target_name, dependency_sources_digest
                 )
             require_binding(embedded, target_name, args.pep440_version, args.build_id)
 

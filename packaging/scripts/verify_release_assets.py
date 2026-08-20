@@ -16,12 +16,6 @@ def expected_assets(display: str, pep440: str, include_checksums: bool) -> set[s
     }
     assets.update(
         {
-            f"HolderPro-{display}-macos-arm64.dmg",
-            f"HolderPro-{display}-macos-x86_64.dmg",
-            f"HolderPro-{display}-windows-x86_64-setup.exe",
-            f"HolderPro-{display}-windows-x86_64-portable.zip",
-            f"HolderPro-{display}-linux-x86_64.AppImage",
-            f"HolderPro-{display}-linux-x86_64.tar.zst",
             f"holderpro-{display}-corresponding-source.tar.zst",
             "dependency-sources.json",
         }
@@ -33,11 +27,6 @@ def expected_assets(display: str, pep440: str, include_checksums: bool) -> set[s
                 f"HolderPro-{target}-native-manifest.json",
                 f"HolderPro-{target}-build-environment.json",
                 f"HolderPro-{target}-asset-manifest.json",
-                (
-                    f"THIRD_PARTY_LICENSES-{target}.zip"
-                    if target == "windows-x86_64"
-                    else f"THIRD_PARTY_LICENSES-{target}.tar.gz"
-                ),
             }
         )
     if include_checksums:

@@ -28,6 +28,10 @@ QWidget { color: #edf1f4; background-color: #191c20; font-size: 12px; }
 QLabel#title { font-size: 20px; font-weight: 700; }
 QLabel#muted { color: #aeb6bf; }
 QLabel#status { padding: 8px; background: #15181b; border-radius: 5px; }
+QLabel#poseHelp {
+  padding: 7px 9px; background: #20262d; border: 1px solid #4b5966;
+  border-radius: 5px; color: #eef4f8;
+}
 QGroupBox { border: 1px solid #3b434c; border-radius: 6px; margin-top: 10px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
 QLineEdit, QDoubleSpinBox, QSpinBox {
@@ -78,6 +82,7 @@ def require_pyside6() -> None:
 
 if QtWidgets is not None:
     from .preview import (
+        DEFAULT_PREVIEW_FACE_LIMIT,
         PAINT_MODE_BLOCKER,
         PAINT_MODE_ENFORCER,
         PAINT_MODE_ERASE,
@@ -152,7 +157,14 @@ if QtWidgets is not None:
             self._restore_settings()
 
             if initial_path is not None:
-                self.set_input_path(initial_path)
+                # Defer command-line model loading until after main() shows the
+                # window and enters Qt's event loop. Large-model consent dialogs
+                # otherwise have a hidden parent and can appear behind other
+                # applications or be resolved before the user sees them.
+                pending_path = Path(initial_path)
+                QtCore.QTimer.singleShot(
+                    0, lambda path=pending_path: self.set_input_path(path)
+                )
             if output_path is not None:
                 self.output_path_edit.setText(str(Path(output_path).expanduser()))
             if self._generate_fn is None and not self._settings.value(
@@ -224,9 +236,15 @@ if QtWidgets is not None:
                 self.base_thickness_spin,
                 self.base_beam_width_spin,
                 self.base_node_diameter_spin,
+                self.connectivity_repair_reach_spin,
+                self.connectivity_bridge_diameter_spin,
+                self.connectivity_repair_passes_spin,
             ):
                 field.valueChanged.connect(self._invalidate_generated_support)
             self.network_base_checkbox.toggled.connect(
+                self._invalidate_generated_support
+            )
+            self.connectivity_repair_checkbox.toggled.connect(
                 self._invalidate_generated_support
             )
             self.output_path_edit.textEdited.connect(
@@ -330,6 +348,20 @@ if QtWidgets is not None:
             self.clear_paint_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+X"))
             self.clear_paint_action.triggered.connect(self.preview.clear_paint)
             edit_menu.addAction(self.clear_paint_action)
+            self.remove_supports_action = QtGui.QAction(
+                "Remove generated supports from view", self
+            )
+            self.remove_supports_action.setShortcut(
+                QtGui.QKeySequence("Ctrl+Shift+Backspace")
+            )
+            self.remove_supports_action.setToolTip(
+                "Hide the generated stand while keeping the model, pose, and "
+                "support paint editable."
+            )
+            self.remove_supports_action.triggered.connect(
+                self._remove_generated_supports
+            )
+            edit_menu.addAction(self.remove_supports_action)
 
             view_menu = self.menuBar().addMenu("&View")
             self._view_actions: list[Any] = []
@@ -378,6 +410,9 @@ if QtWidgets is not None:
                 "baseThickness": self.base_thickness_spin,
                 "baseBeamWidth": self.base_beam_width_spin,
                 "baseNodeDiameter": self.base_node_diameter_spin,
+                "connectivityRepairReach": self.connectivity_repair_reach_spin,
+                "connectivityBridgeDiameter": self.connectivity_bridge_diameter_spin,
+                "connectivityRepairPasses": self.connectivity_repair_passes_spin,
                 "brushRadius": self.brush_radius_spin,
             }
             for name, field in fields.items():
@@ -395,6 +430,13 @@ if QtWidgets is not None:
                     pass
             self.network_base_checkbox.setChecked(
                 bool(self._settings.value("generation/singleTrunk", True, bool))
+            )
+            self.connectivity_repair_checkbox.setChecked(
+                bool(
+                    self._settings.value(
+                        "generation/connectivityRepair", True, bool
+                    )
+                )
             )
             self.slim_full_tip_checkbox.setChecked(
                 bool(self._settings.value("generation/slimFullTip", False, bool))
@@ -417,12 +459,19 @@ if QtWidgets is not None:
                 "baseThickness": self.base_thickness_spin,
                 "baseBeamWidth": self.base_beam_width_spin,
                 "baseNodeDiameter": self.base_node_diameter_spin,
+                "connectivityRepairReach": self.connectivity_repair_reach_spin,
+                "connectivityBridgeDiameter": self.connectivity_bridge_diameter_spin,
+                "connectivityRepairPasses": self.connectivity_repair_passes_spin,
                 "brushRadius": self.brush_radius_spin,
             }
             for name, field in fields.items():
                 self._settings.setValue(f"generation/{name}", field.value())
             self._settings.setValue(
                 "generation/singleTrunk", self.network_base_checkbox.isChecked()
+            )
+            self._settings.setValue(
+                "generation/connectivityRepair",
+                self.connectivity_repair_checkbox.isChecked(),
             )
             self._settings.setValue(
                 "generation/slimFullTip", self.slim_full_tip_checkbox.isChecked()
@@ -451,8 +500,10 @@ if QtWidgets is not None:
                 (
                     "Pose object",
                     PAINT_MODE_POSE,
-                    "Drag to rotate; Shift-drag rotates around Z; Option/Alt-drag "
-                    "or scroll raises and lowers the model.",
+                    "Drag the red X, green Y, or blue Z ring for one-axis rotation; "
+                    "drag the model for free rotation; drag empty space to orbit the "
+                    "view; drag the amber Height bar, Option/Alt-drag, or scroll to "
+                    "raise and lower the model.",
                 ),
                 (
                     "Paint support",
@@ -511,6 +562,16 @@ if QtWidgets is not None:
                 self.view_buttons.append(button)
             layout.addLayout(tools)
 
+            self.pose_help_label = QtWidgets.QLabel(
+                "Pose: drag red X / green Y / blue Z for one axis  •  drag the "
+                "model to tumble  •  drag empty space to orbit  •  drag the amber "
+                "Height bar up/down"
+            )
+            self.pose_help_label.setObjectName("poseHelp")
+            self.pose_help_label.setWordWrap(True)
+            self.pose_help_label.setVisible(False)
+            layout.addWidget(self.pose_help_label)
+
             self.preview = ModelPreviewWidget(panel)
             self.preview.paintChanged.connect(self._on_paint_changed)
             self.preview.paintModeChanged.connect(self._on_paint_mode_changed)
@@ -545,6 +606,17 @@ if QtWidgets is not None:
             clear_button.clicked.connect(self.preview.clear_paint)
             controls.addWidget(clear_button)
             self.clear_paint_button = clear_button
+            self.remove_supports_button = QtWidgets.QPushButton(
+                "Remove generated supports"
+            )
+            self.remove_supports_button.setToolTip(
+                "Remove the generated stand from this view. The model pose and "
+                "paint are kept so you can revise them and generate again."
+            )
+            self.remove_supports_button.clicked.connect(
+                self._remove_generated_supports
+            )
+            controls.addWidget(self.remove_supports_button)
             layout.addLayout(controls)
 
             legend = QtWidgets.QHBoxLayout()
@@ -621,13 +693,13 @@ if QtWidgets is not None:
             form.addRow("Bottom height", self.bottom_height_spin)
 
             self.rotation_x_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             self.rotation_y_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             self.rotation_z_spin = _number_field(
-                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=1
+                -360.0, 360.0, 0.0, step=5.0, suffix="°", decimals=2
             )
             form.addRow("Rotate X", self.rotation_x_spin)
             form.addRow("Rotate Y", self.rotation_y_spin)
@@ -736,7 +808,44 @@ if QtWidgets is not None:
             form.addRow("Taper height", self.base_thickness_spin)
             form.addRow("Blob margin", self.base_beam_width_spin)
             form.addRow("Root lobe diameter", self.base_node_diameter_spin)
+            self.connectivity_repair_checkbox = QtWidgets.QCheckBox(
+                "Auto-repair detached pieces"
+            )
+            self.connectivity_repair_checkbox.setChecked(True)
+            self.connectivity_repair_checkbox.setToolTip(
+                "Safely retry disconnected results by adding small rounded webs "
+                "between layer regions. Printable single-component validation "
+                "still remains required."
+            )
+            self.connectivity_repair_reach_spin = _number_field(
+                0.05, 20.0, 5.0, step=0.25, suffix=" mm", decimals=2
+            )
+            self.connectivity_repair_reach_spin.setToolTip(
+                "Maximum gap the final repair pass may bridge. Earlier passes "
+                "start smaller and increase gradually."
+            )
+            self.connectivity_bridge_diameter_spin = _number_field(
+                0.2, 10.0, 1.2, step=0.2, suffix=" mm", decimals=2
+            )
+            self.connectivity_bridge_diameter_spin.setToolTip(
+                "Thickness of rounded repair webs at the final pass."
+            )
+            self.connectivity_repair_passes_spin = QtWidgets.QSpinBox()
+            self.connectivity_repair_passes_spin.setRange(1, 10)
+            self.connectivity_repair_passes_spin.setValue(4)
+            self.connectivity_repair_passes_spin.setToolTip(
+                "Number of progressively stronger repair attempts."
+            )
+            form.addRow("Repair", self.connectivity_repair_checkbox)
+            form.addRow("Repair reach", self.connectivity_repair_reach_spin)
+            form.addRow(
+                "Bridge diameter", self.connectivity_bridge_diameter_spin
+            )
+            form.addRow("Repair passes", self.connectivity_repair_passes_spin)
             self.network_base_checkbox.toggled.connect(self._set_base_controls_enabled)
+            self.connectivity_repair_checkbox.toggled.connect(
+                self._set_connectivity_controls_enabled
+            )
             self._slim_full_tip_previous: dict[str, float] | None = None
             return group
 
@@ -775,6 +884,24 @@ if QtWidgets is not None:
                 self.base_thickness_spin,
                 self.base_beam_width_spin,
                 self.base_node_diameter_spin,
+                self.connectivity_repair_checkbox,
+            ):
+                field.setEnabled(available)
+            self._set_connectivity_controls_enabled(
+                available and self.connectivity_repair_checkbox.isChecked()
+            )
+
+        @QtCore.Slot(bool)
+        def _set_connectivity_controls_enabled(self, enabled: bool) -> None:
+            available = (
+                bool(enabled)
+                and self._thread is None
+                and self.network_base_checkbox.isChecked()
+            )
+            for field in (
+                self.connectivity_repair_reach_spin,
+                self.connectivity_bridge_diameter_spin,
+                self.connectivity_repair_passes_spin,
             ):
                 field.setEnabled(available)
 
@@ -783,6 +910,14 @@ if QtWidgets is not None:
         @QtCore.Slot()
         def _invalidate_generated_support(self, *_args: object) -> None:
             self.preview.clear_supports()
+
+        @QtCore.Slot()
+        def _remove_generated_supports(self) -> None:
+            self.preview.clear_supports()
+            self._set_status(
+                "Generated supports removed from the viewer. Model pose and "
+                "paint were kept; edit or repaint, then generate again."
+            )
 
         @QtCore.Slot()
         def _update_preview_pose(self, *_args: object) -> None:
@@ -824,10 +959,11 @@ if QtWidgets is not None:
 
         @QtCore.Slot(str)
         def _on_interaction_mode_changed(self, mode: str) -> None:
+            self.pose_help_label.setVisible(mode == PAINT_MODE_POSE)
             if mode == PAINT_MODE_POSE:
                 self.surface_info_label.setText(
-                    "Pose object — drag rotates; Shift-drag rotates Z; "
-                    "Option/Alt-drag or scroll changes height."
+                    "Pose object — red X, green Y, and blue Z rings constrain one "
+                    "axis; the amber Height bar raises/lowers; empty space orbits."
                 )
             elif mode == PAINT_MODE_INSPECT:
                 self.surface_info_label.setText(
@@ -931,7 +1067,45 @@ if QtWidgets is not None:
                 from .mesh_io import load_reference_mesh
 
                 mesh = load_reference_mesh(model_path)
-                self.preview.load_mesh(mesh)
+                display_face_limit: int | None = None
+                if len(mesh.faces) > DEFAULT_PREVIEW_FACE_LIMIT:
+                    detail_box = QtWidgets.QMessageBox(self)
+                    detail_box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+                    detail_box.setWindowTitle("Very detailed model")
+                    detail_box.setText(
+                        f"This model contains {len(mesh.faces):,} faces."
+                    )
+                    detail_box.setInformativeText(
+                        "HolderPro will display every source triangle by default. "
+                        f"A reduced {DEFAULT_PREVIEW_FACE_LIMIT:,}-face proxy is "
+                        "available if memory or interaction becomes a problem; "
+                        "support generation always retains every source face.\n\n"
+                        "Full detail may use several gigabytes of RAM and make "
+                        "posing, painting, or loading much slower."
+                    )
+                    proxy_button = detail_box.addButton(
+                        f"Use reduced {DEFAULT_PREVIEW_FACE_LIMIT / 1_000_000:g}M "
+                        "preview",
+                        QtWidgets.QMessageBox.ButtonRole.ActionRole,
+                    )
+                    all_faces_button = detail_box.addButton(
+                        f"Use all {len(mesh.faces):,} faces",
+                        QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+                    )
+                    cancel_button = detail_box.addButton(
+                        QtWidgets.QMessageBox.StandardButton.Cancel
+                    )
+                    detail_box.setDefaultButton(all_faces_button)
+                    detail_box.exec()
+                    clicked = detail_box.clickedButton()
+                    if clicked is cancel_button:
+                        self._set_status("Model loading cancelled.")
+                        return
+                    if clicked is proxy_button:
+                        display_face_limit = DEFAULT_PREVIEW_FACE_LIMIT
+                self.preview.load_mesh(
+                    mesh, display_face_limit=display_face_limit
+                )
                 self._update_preview_pose()
                 self.preview.view_under_isometric()
             except Exception as exc:
@@ -948,9 +1122,15 @@ if QtWidgets is not None:
                 )
                 self.output_path_edit.setText(str(suggested))
                 self._output_was_edited = False
+            display_faces = self.preview.display_face_count
+            preview_detail = (
+                f" Displaying {display_faces:,} high-detail preview faces."
+                if display_faces and display_faces < len(mesh.faces)
+                else ""
+            )
             self._set_status(
-                f"Loaded {len(mesh.faces):,} faces. Purple marks low concave "
-                "undersides; green paint enforces support."
+                f"Loaded {len(mesh.faces):,} source faces.{preview_detail} "
+                "Purple marks low concave undersides; green paint enforces support."
             )
 
         def dragEnterEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
@@ -1041,6 +1221,18 @@ if QtWidgets is not None:
                 base_thickness_mm=self.base_thickness_spin.value(),
                 base_beam_width_mm=self.base_beam_width_spin.value(),
                 base_node_diameter_mm=self.base_node_diameter_spin.value(),
+                connectivity_repair_enabled=(
+                    self.connectivity_repair_checkbox.isChecked()
+                ),
+                connectivity_repair_reach_mm=(
+                    self.connectivity_repair_reach_spin.value()
+                ),
+                connectivity_bridge_diameter_mm=(
+                    self.connectivity_bridge_diameter_spin.value()
+                ),
+                connectivity_repair_passes=(
+                    self.connectivity_repair_passes_spin.value()
+                ),
                 painted_enforcer_faces=enforcers,
                 painted_blocker_faces=blockers,
                 paint_face_count=self.preview.face_count,
@@ -1313,9 +1505,9 @@ if QtWidgets is not None:
             )
             text = f"""
                 <h2>HolderPro {__version__}</h2>
-                <p>Copyright © 2026 Finn. HolderPro is free software licensed
-                under the GNU Affero General Public License, version 3 or later,
-                and comes with no warranty.</p>
+                <p>Copyright © 2026 HolderPro contributors. HolderPro is free
+                software licensed under the GNU Affero General Public License,
+                version 3 or later, and comes with no warranty.</p>
                 <p><a href="{release_url}">Version-specific release and
                 corresponding-source archive</a> ·
                 <a href="{source_url}">exact HolderPro source tree</a> ·
@@ -1352,6 +1544,7 @@ if QtWidgets is not None:
             self.brush_radius_spin.setEnabled(not running)
             self.low_height_spin.setEnabled(not running)
             self.clear_paint_button.setEnabled(not running)
+            self.remove_supports_button.setEnabled(not running)
             self.enforcers_only_checkbox.setEnabled(False)
             self.slim_full_tip_checkbox.setEnabled(not running)
             self.network_base_checkbox.setEnabled(not running)
@@ -1363,6 +1556,7 @@ if QtWidgets is not None:
             for action in self._mode_actions:
                 action.setEnabled(not running)
             self.clear_paint_action.setEnabled(not running)
+            self.remove_supports_action.setEnabled(not running)
             pose_enabled = not running and not self._painting_locked
             for field in (
                 self.bottom_height_spin,

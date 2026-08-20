@@ -412,19 +412,21 @@ def prepare_stl_mesh(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
 
     vertices64 = np.asarray(mesh.vertices, dtype=np.float64)
     faces64 = np.asarray(mesh.faces, dtype=np.int64)
-    original_volume = float(mesh.volume)
     if (
         vertices64.ndim != 2
         or vertices64.shape[1] != 3
         or faces64.ndim != 2
         or faces64.shape[1] != 3
         or not np.isfinite(vertices64).all()
-        or not math.isfinite(original_volume)
-        or original_volume <= 0.0
         or faces64.min(initial=0) < 0
         or faces64.max(initial=-1) >= len(vertices64)
         or len(vertices64) > np.iinfo(np.uint32).max
+        or not _has_positive_finite_extent(vertices64)
     ):
+        raise SolidificationError(_STL_ENCODING_ERROR)
+
+    original_volume = float(mesh.volume)
+    if not math.isfinite(original_volume) or original_volume <= 0.0:
         raise SolidificationError(_STL_ENCODING_ERROR)
 
     try:
@@ -847,15 +849,26 @@ def _write_ascii_stl(mesh: trimesh.Trimesh, destination: str | os.PathLike[str])
 
 
 def _is_valid_stl_mesh(mesh: object) -> bool:
+    if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):
+        return False
+    if not _has_positive_finite_extent(np.asarray(mesh.vertices, dtype=np.float64)):
+        return False
     return bool(
-        isinstance(mesh, trimesh.Trimesh)
-        and len(mesh.faces)
-        and mesh.is_watertight
+        mesh.is_watertight
         and mesh.is_winding_consistent
         and mesh.is_volume
         and math.isfinite(float(mesh.volume))
         and mesh.volume > 0.0
     )
+
+
+def _has_positive_finite_extent(vertices: np.ndarray) -> bool:
+    if vertices.ndim != 2 or vertices.shape[1] != 3 or not len(vertices):
+        return False
+    if not np.isfinite(vertices).all():
+        return False
+    extents = np.ptp(vertices, axis=0)
+    return bool(np.all(np.isfinite(extents)) and np.all(extents > 0.0))
 
 
 def export_stl(source: JsonSource, destination: str | os.PathLike[str]) -> Path:
