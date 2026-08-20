@@ -500,6 +500,16 @@ def test_native_prefetch_sources_match_audited_manifest() -> None:
         assert definition in native_cmake
 
 
+def test_ci_metadata_wheel_rejects_stale_native_payloads() -> None:
+    workflow = (PROJECT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    metadata = workflow.split("\n  metadata:\n", maxsplit=1)[1]
+    assert "rm -rf build dist" in metadata
+    assert "metadata-only wheel unexpectedly contains native payload" in metadata
+    assert 'name.startswith("holderpro/_native/")' in metadata
+    assert 'name != "holderpro/_native/__init__.py"' in metadata
+
+
 def test_pypi_oidc_job_contains_no_shell_or_repository_token() -> None:
     workflow = (PROJECT / ".github/workflows/release-publish.yml").read_text(
         encoding="utf-8"

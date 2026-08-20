@@ -5,6 +5,7 @@ import os
 import platform
 import stat
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -547,8 +548,10 @@ def test_failed_atomic_export_preserves_existing_output(tmp_path: Path) -> None:
     output = tmp_path / "existing.stl"
     output.write_bytes(b"existing output")
 
-    with pytest.raises(GenerationError, match="STL encoding"):
-        _atomic_export_mesh(mesh, output)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with pytest.raises(GenerationError, match="STL encoding"):
+            _atomic_export_mesh(mesh, output)
 
     assert output.read_bytes() == b"existing output"
     assert not list(tmp_path.glob(".existing.stl.*"))
