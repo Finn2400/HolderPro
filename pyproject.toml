@@ -36,7 +36,7 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.26,<3",
-  "trimesh>=4.6,<5",
+  "trimesh>=4.6,<6",
   "manifold3d>=3.3,<4",
   "shapely>=2.1,<3",
 ]
